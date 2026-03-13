@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/papercomputeco/sweeper/pkg/tapes"
 	"github.com/papercomputeco/sweeper/pkg/telemetry"
 )
 
@@ -15,14 +16,36 @@ type Insight struct {
 	Attempts    int
 	Successes   int
 	SuccessRate float64
+	TotalTokens int
 }
 
 type Observer struct {
-	dir string
+	dir          string
+	tapesReader  *tapes.Reader
+	tapesEnabled bool
 }
 
-func New(dir string) *Observer {
-	return &Observer{dir: dir}
+type ObserverOption func(*Observer)
+
+func WithTapesReader(r *tapes.Reader) ObserverOption {
+	return func(o *Observer) {
+		o.tapesReader = r
+		o.tapesEnabled = true
+	}
+}
+
+func WithTapesEnabled(enabled bool) ObserverOption {
+	return func(o *Observer) {
+		o.tapesEnabled = enabled
+	}
+}
+
+func New(dir string, opts ...ObserverOption) *Observer {
+	o := &Observer{dir: dir}
+	for _, opt := range opts {
+		opt(o)
+	}
+	return o
 }
 
 func (o *Observer) Analyze() ([]Insight, error) {
@@ -33,7 +56,43 @@ func (o *Observer) Analyze() ([]Insight, error) {
 	if len(events) == 0 {
 		return nil, nil
 	}
-	return o.computeInsights(events), nil
+	insights := o.computeInsights(events)
+	if o.tapesEnabled && o.tapesReader != nil {
+		o.enrichWithTapes(insights)
+	}
+	return insights, nil
+}
+
+func (o *Observer) enrichWithTapes(insights []Insight) {
+	hashes, err := o.tapesReader.RecentSessions(50)
+	if err != nil {
+		return
+	}
+
+	totalTokens := 0
+	for _, hash := range hashes {
+		session, err := o.tapesReader.GetSession(hash)
+		if err != nil {
+			continue
+		}
+		totalTokens += session.TotalPromptTokens + session.TotalCompletionTokens
+	}
+
+	if totalTokens == 0 {
+		return
+	}
+
+	totalAttempts := 0
+	for _, ins := range insights {
+		totalAttempts += ins.Attempts
+	}
+	if totalAttempts == 0 {
+		return
+	}
+
+	for i := range insights {
+		insights[i].TotalTokens = (totalTokens * insights[i].Attempts) / totalAttempts
+	}
 }
 
 func (o *Observer) readAll() ([]telemetry.Event, error) {

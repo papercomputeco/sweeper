@@ -51,3 +51,50 @@ func TestObserveEmptyDir(t *testing.T) {
 		t.Fatalf("expected 0 insights from empty dir, got %d", len(insights))
 	}
 }
+
+func TestObserveWithTapesReader(t *testing.T) {
+	// Verifies observer works with tapesEnabled=true but tapesReader=nil (no enrichment path).
+	dir := t.TempDir()
+	events := []telemetry.Event{
+		{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": true}},
+	}
+	writeEvents(t, dir, events)
+	obs := New(dir, WithTapesEnabled(true)) // tapesReader remains nil
+	insights, err := obs.Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(insights) == 0 {
+		t.Fatal("expected at least one insight")
+	}
+	// No enrichment happened (tapesReader is nil), so TotalTokens should be zero.
+	for _, ins := range insights {
+		if ins.TotalTokens != 0 {
+			t.Errorf("expected TotalTokens=0 when tapesReader is nil, got %d", ins.TotalTokens)
+		}
+	}
+}
+
+func TestObserveWithoutTapes(t *testing.T) {
+	// Verifies observer works with tapesEnabled=false (default).
+	dir := t.TempDir()
+	events := []telemetry.Event{
+		{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": false}},
+		{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": true}},
+	}
+	writeEvents(t, dir, events)
+	obs := New(dir, WithTapesEnabled(false))
+	insights, err := obs.Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(insights) == 0 {
+		t.Fatal("expected at least one insight")
+	}
+	// tapesEnabled=false means no enrichment; TotalTokens must be zero.
+	for _, ins := range insights {
+		if ins.TotalTokens != 0 {
+			t.Errorf("expected TotalTokens=0 when tapesEnabled=false, got %d", ins.TotalTokens)
+		}
+	}
+}
