@@ -5,6 +5,7 @@ type Config struct {
 	Concurrency  int
 	TelemetryDir string
 	DryRun       bool
+	NoTapes      bool
 }
 
 func Default() Config {
