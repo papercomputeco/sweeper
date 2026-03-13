@@ -180,3 +180,15 @@ func TestVMShutdownError(t *testing.T) {
 		t.Fatal("expected error from failed destroy")
 	}
 }
+
+func TestBootPublicAPIErrorsWithoutMb(t *testing.T) {
+	// Exercise the public Boot() function and defaultRunner.
+	// mb is not installed in test environments so this covers the
+	// error path through defaultRunner → exec.Command failure.
+	t.Setenv("PATH", t.TempDir())
+	dir := t.TempDir()
+	_, err := Boot("test-vm", "/tmp/proj", dir)
+	if err == nil {
+		t.Error("expected error when mb is not available")
+	}
+}

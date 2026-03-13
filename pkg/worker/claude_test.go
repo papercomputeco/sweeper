@@ -1,6 +1,9 @@
 package worker
 
 import (
+	"context"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
@@ -41,5 +44,61 @@ func TestBuildRawPrompt(t *testing.T) {
 	}
 	if !strings.Contains(prompt, "Commit nothing") {
 		t.Error("raw prompt should instruct not to commit")
+	}
+}
+
+func TestClaudeExecutorSuccess(t *testing.T) {
+	dir := t.TempDir()
+	fakeClaude := filepath.Join(dir, "claude")
+	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho fixed"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	task := Task{
+		ID:   0,
+		File: "test.go",
+		Dir:  t.TempDir(),
+		Issues: []linter.Issue{
+			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
+		},
+	}
+	result := ClaudeExecutor(context.Background(), task)
+	if !result.Success {
+		t.Errorf("expected success, got error: %s", result.Error)
+	}
+	if result.IssuesFix != 1 {
+		t.Errorf("expected 1 issue fix, got %d", result.IssuesFix)
+	}
+	if result.Duration <= 0 {
+		t.Error("expected positive duration")
+	}
+}
+
+func TestClaudeExecutorError(t *testing.T) {
+	dir := t.TempDir()
+	fakeClaude := filepath.Join(dir, "claude")
+	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho error output; exit 1"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	task := Task{
+		ID:   0,
+		File: "test.go",
+		Dir:  t.TempDir(),
+		Issues: []linter.Issue{
+			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
+		},
+	}
+	result := ClaudeExecutor(context.Background(), task)
+	if result.Success {
+		t.Error("expected failure")
+	}
+	if result.Output == "" {
+		t.Error("expected output even on error")
+	}
+	if result.Error == "" {
+		t.Error("expected error message")
 	}
 }
