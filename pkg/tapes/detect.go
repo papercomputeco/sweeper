@@ -12,6 +12,9 @@ type Status struct {
 	Message   string
 }
 
+// lookPath is a package-level variable to allow testing.
+var lookPath = exec.LookPath
+
 // FindDB searches for the tapes SQLite database in standard locations.
 func FindDB(projectDir string) string {
 	candidates := []string{
@@ -44,7 +47,7 @@ func CheckInstallation(dbPath string) Status {
 		return Status{Available: true, DBPath: dbPath}
 	}
 
-	if _, err := exec.LookPath("tapes"); err == nil {
+	if _, err := lookPath("tapes"); err == nil {
 		return Status{
 			Available: false,
 			Message:   "tapes CLI found but no database. Run `tapes init` to set up local tapes.",

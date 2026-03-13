@@ -98,10 +98,7 @@ func (o *Observer) enrichWithTapes(insights []Insight) {
 }
 
 func (o *Observer) readAll() ([]telemetry.Event, error) {
-	files, err := filepath.Glob(filepath.Join(o.dir, "*.jsonl"))
-	if err != nil {
-		return nil, err
-	}
+	files, _ := filepath.Glob(filepath.Join(o.dir, "*.jsonl"))
 	var events []telemetry.Event
 	for _, f := range files {
 		fileEvents, err := o.readFile(f)

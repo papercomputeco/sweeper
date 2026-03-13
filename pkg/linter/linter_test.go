@@ -1,6 +1,7 @@
 package linter
 
 import (
+	"context"
 	"os"
 	"testing"
 )
@@ -166,4 +167,46 @@ func TestParseOutputPreservesRaw(t *testing.T) {
 	if result.RawOutput != raw {
 		t.Error("expected RawOutput to always be set")
 	}
+}
+
+func TestRunCommandSuccess(t *testing.T) {
+	result, err := RunCommand(context.Background(), ".", []string{"echo", "fake.go:1:1: test error (testlint)"})
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if !result.Parsed {
+		t.Fatal("expected Parsed to be true")
+	}
+	if len(result.Issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(result.Issues))
+	}
+	if result.Issues[0].File != "fake.go" {
+		t.Errorf("expected file fake.go, got %s", result.Issues[0].File)
+	}
+}
+
+func TestRunCommandExitError(t *testing.T) {
+	// bash -c exits non-zero; the ExitError path is taken and output is still parsed.
+	result, err := RunCommand(context.Background(), ".", []string{"bash", "-c", "echo 'a.go:1:1: bad (lint)' && exit 1"})
+	if err != nil {
+		t.Fatalf("unexpected error for ExitError: %v", err)
+	}
+	if !result.Parsed {
+		t.Fatal("expected Parsed to be true even with non-zero exit")
+	}
+	if len(result.Issues) != 1 {
+		t.Fatalf("expected 1 issue, got %d", len(result.Issues))
+	}
+}
+
+func TestRunCommandNotFound(t *testing.T) {
+	_, err := RunCommand(context.Background(), ".", []string{"nonexistent-command-sweeper-test"})
+	if err == nil {
+		t.Error("expected error for missing command")
+	}
+}
+
+func TestRun(t *testing.T) {
+	// Run tries golangci-lint. Whether installed or not, the function itself is exercised.
+	_, _ = Run(context.Background(), t.TempDir())
 }

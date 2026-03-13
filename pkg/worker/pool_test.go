@@ -57,3 +57,15 @@ func TestPoolRespectsMaxConcurrency(t *testing.T) {
 		t.Errorf("max concurrency exceeded: got %d, want <= 3", maxConcurrent)
 	}
 }
+
+func TestPoolRunEmpty(t *testing.T) {
+	executor := func(ctx context.Context, task Task) Result {
+		t.Fatal("executor should not be called for empty tasks")
+		return Result{}
+	}
+	pool := NewPool(2, executor)
+	results := pool.Run(context.Background(), nil)
+	if results != nil {
+		t.Errorf("expected nil results for empty tasks, got %v", results)
+	}
+}

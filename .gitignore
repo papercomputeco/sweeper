@@ -1,3 +1,4 @@
 sweeper
 .sweeper/
 *.jsonl
+coverage.out

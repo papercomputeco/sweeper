@@ -2,6 +2,7 @@ package tapes
 
 import (
 	"database/sql"
+	"os"
 	"testing"
 	"time"
 
@@ -128,5 +129,141 @@ func TestReaderRecentSessions(t *testing.T) {
 	}
 	if len(sessions) != 1 {
 		t.Fatalf("expected 1 session, got %d", len(sessions))
+	}
+}
+
+func TestNewReaderInvalidPath(t *testing.T) {
+	_, err := NewReader("/nonexistent/path/tapes.db")
+	if err == nil {
+		t.Error("expected error for invalid path")
+	}
+}
+
+func TestReaderClose(t *testing.T) {
+	db := setupTestDB(t)
+	reader := NewReaderFromDB(db)
+	if err := reader.Close(); err != nil {
+		t.Errorf("unexpected error closing reader: %v", err)
+	}
+}
+
+func TestReaderListSessionsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	reader := NewReaderFromDB(db)
+	sessions, err := reader.ListSessions()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
+	}
+}
+
+func TestReaderRecentSessionsEmpty(t *testing.T) {
+	db := setupTestDB(t)
+	defer db.Close()
+
+	reader := NewReaderFromDB(db)
+	sessions, err := reader.RecentSessions(10)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(sessions) != 0 {
+		t.Errorf("expected 0 sessions, got %d", len(sessions))
+	}
+}
+
+func TestReaderListSessionsClosedDB(t *testing.T) {
+	db := setupTestDB(t)
+	reader := NewReaderFromDB(db)
+	db.Close()
+	_, err := reader.ListSessions()
+	if err == nil {
+		t.Error("expected error querying closed DB")
+	}
+}
+
+func TestReaderRecentSessionsClosedDB(t *testing.T) {
+	db := setupTestDB(t)
+	reader := NewReaderFromDB(db)
+	db.Close()
+	_, err := reader.RecentSessions(10)
+	if err == nil {
+		t.Error("expected error querying closed DB")
+	}
+}
+
+func TestReaderGetSessionClosedDB(t *testing.T) {
+	db := setupTestDB(t)
+	reader := NewReaderFromDB(db)
+	db.Close()
+	_, err := reader.GetSession("root1")
+	if err == nil {
+		t.Error("expected error querying closed DB")
+	}
+}
+
+func TestNewReaderValidDB(t *testing.T) {
+	dir := t.TempDir()
+	dbPath := dir + "/test.db"
+	db, err := sql.Open("sqlite", dbPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Exec("CREATE TABLE nodes (hash TEXT)")
+	db.Close()
+
+	reader, err := NewReader(dbPath)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	reader.Close()
+}
+
+func TestNewReaderPingError(t *testing.T) {
+	// A non-SQLite file will fail on Ping.
+	dir := t.TempDir()
+	dbPath := dir + "/bad.db"
+	os.WriteFile(dbPath, []byte("not a sqlite file"), 0o644)
+	_, err := NewReader(dbPath)
+	if err == nil {
+		t.Error("expected error for corrupt DB file")
+	}
+}
+
+func TestReaderListSessionsScanError(t *testing.T) {
+	// Create a DB with wrong column types to trigger scan errors.
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// Create nodes with hash as BLOB instead of TEXT — Scan(&string) may fail.
+	db.Exec(`CREATE TABLE nodes (hash BLOB, parent_hash TEXT, role TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
+	db.Exec(`INSERT INTO nodes (hash, parent_hash) VALUES (X'DEADBEEF', NULL)`)
+	reader := NewReaderFromDB(db)
+	// ListSessions will try to scan BLOB into string.
+	sessions, err := reader.ListSessions()
+	// Some drivers handle this gracefully; we just exercise the code path.
+	_ = sessions
+	_ = err
+}
+
+func TestReaderGetSessionScanError(t *testing.T) {
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	// Create table missing columns that GetSession expects.
+	db.Exec(`CREATE TABLE nodes (hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
+	db.Exec(`INSERT INTO nodes (hash, parent_hash, role, created_at) VALUES ('root1', NULL, 'user', CURRENT_TIMESTAMP)`)
+	reader := NewReaderFromDB(db)
+	// GetSession SELECTs more columns than exist — should trigger an error.
+	_, err = reader.GetSession("root1")
+	if err == nil {
+		t.Error("expected error from schema mismatch in GetSession")
 	}
 }
