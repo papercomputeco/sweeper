@@ -7,6 +7,7 @@ import (
 var (
 	targetDir   string
 	concurrency int
+	noTapes     bool
 )
 
 func NewRootCmd() *cobra.Command {
@@ -17,6 +18,7 @@ func NewRootCmd() *cobra.Command {
 	}
 	root.PersistentFlags().StringVarP(&targetDir, "target", "t", ".", "target directory to maintain")
 	root.PersistentFlags().IntVarP(&concurrency, "concurrency", "c", 3, "max parallel sub-agents")
+	root.PersistentFlags().BoolVar(&noTapes, "no-tapes", false, "disable tapes integration")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newRunCmd())
 	root.AddCommand(newObserveCmd())

@@ -20,6 +20,7 @@ func newRunCmd() *cobra.Command {
 				Concurrency:  concurrency,
 				TelemetryDir: ".sweeper/telemetry",
 				DryRun:       dryRun,
+				NoTapes:      noTapes,
 			}
 			a := agent.New(cfg)
 			summary, err := a.Run(context.Background())
