@@ -7,6 +7,7 @@ import (
 
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
+	"github.com/papercomputeco/sweeper/pkg/loop"
 	"github.com/papercomputeco/sweeper/pkg/planner"
 	"github.com/papercomputeco/sweeper/pkg/tapes"
 	"github.com/papercomputeco/sweeper/pkg/telemetry"
@@ -20,6 +21,7 @@ type Summary struct {
 	Tasks       int
 	Fixed       int
 	Failed      int
+	Rounds      int
 }
 
 type Agent struct {
@@ -93,53 +95,193 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 	issues := result.Issues
 	fmt.Printf("Found %d lint issues across files.\n", len(issues))
 
-	fixTasks := planner.GroupByFile(issues)
-	tasks := make([]worker.Task, len(fixTasks))
-	for i, ft := range fixTasks {
-		tasks[i] = worker.Task{
-			ID:     i,
-			File:   ft.File,
-			Dir:    a.cfg.TargetDir,
-			Issues: ft.Issues,
-		}
-		tasks[i].Prompt = worker.BuildPrompt(tasks[i])
-	}
-	fmt.Printf("Created %d fix tasks.\n", len(tasks))
-
-	if a.cfg.DryRun {
-		fmt.Println("Dry run - would fix:")
-		for _, t := range tasks {
-			fmt.Printf("  - %s (%d issues)\n", t.File, len(t.Issues))
-		}
-		return Summary{TotalIssues: len(issues), Tasks: len(tasks)}, nil
+	maxRounds := a.cfg.MaxRounds
+	if maxRounds < 1 {
+		maxRounds = 1
 	}
 
+	summary := Summary{TotalIssues: len(issues)}
+	fileHistories := make(map[string]*loop.FileHistory)
+	explorationAttempted := make(map[string]bool)
+
+	for round := 0; round < maxRounds; round++ {
+		if len(issues) == 0 {
+			break
+		}
+
+		fixTasks := planner.GroupByFile(issues)
+		tasks := make([]worker.Task, len(fixTasks))
+		strategies := make([]loop.Strategy, len(fixTasks))
+
+		for i, ft := range fixTasks {
+			fh := safeHistory(fileHistories[ft.File])
+			strategy := loop.PickStrategy(round, fh, a.cfg.StaleThreshold)
+			strategies[i] = strategy
+
+			tasks[i] = worker.Task{
+				ID:     i,
+				File:   ft.File,
+				Dir:    a.cfg.TargetDir,
+				Issues: ft.Issues,
+			}
+			switch strategy {
+			case loop.StrategyRetry:
+				tasks[i].Prompt = worker.BuildRetryPrompt(tasks[i], fh.LastOutput())
+			case loop.StrategyExploration:
+				tasks[i].Prompt = worker.BuildExplorationPrompt(tasks[i], fh.LastOutput())
+				explorationAttempted[ft.File] = true
+			default:
+				tasks[i].Prompt = worker.BuildPrompt(tasks[i])
+			}
+		}
+
+		if round == 0 {
+			summary.Tasks = len(tasks)
+			fmt.Printf("Created %d fix tasks.\n", len(tasks))
+		} else {
+			fmt.Printf("Round %d: %d files with remaining issues.\n", round+1, len(tasks))
+		}
+
+		if a.cfg.DryRun {
+			fmt.Println("Dry run - would fix:")
+			for _, t := range tasks {
+				fmt.Printf("  - %s (%d issues)\n", t.File, len(t.Issues))
+			}
+			summary.Rounds = round + 1
+			return summary, nil
+		}
+
+		results := a.runRound(ctx, tasks)
+		summary.Rounds = round + 1
+
+		for i, r := range results {
+			strategy := strategies[i]
+			a.publishFixAttempt(r, linterName, round, strategy)
+
+			// Update file history
+			fh, ok := fileHistories[r.File]
+			if !ok {
+				fh = &loop.FileHistory{File: r.File}
+				fileHistories[r.File] = fh
+			}
+			fh.Rounds = append(fh.Rounds, loop.RoundResult{
+				File:         r.File,
+				Round:        round,
+				Strategy:     strategy,
+				IssuesBefore: len(tasks[i].Issues),
+				Output:       r.Output,
+				Success:      r.Success,
+				Error:        r.Error,
+			})
+		}
+
+		a.publishRoundComplete(round, linterName, len(tasks), results)
+
+		// If last round, tally results and stop
+		if round >= maxRounds-1 {
+			for _, r := range results {
+				if r.Success {
+					summary.Fixed += r.IssuesFix
+				} else {
+					summary.Failed++
+				}
+			}
+			break
+		}
+
+		// Re-lint to check remaining issues
+		reResult, err := a.linterFn(ctx, a.cfg.TargetDir)
+		if err != nil {
+			// Don't fail the whole run; tally current results and stop
+			for _, r := range results {
+				if r.Success {
+					summary.Fixed += r.IssuesFix
+				} else {
+					summary.Failed++
+				}
+			}
+			break
+		}
+
+		// Count fixes from this round based on re-lint results
+		remainingByFile := make(map[string]int)
+		if reResult.Parsed {
+			for _, iss := range reResult.Issues {
+				remainingByFile[iss.File]++
+			}
+		}
+		for i, r := range results {
+			before := len(tasks[i].Issues)
+			after := remainingByFile[r.File]
+			fixed := before - after
+			if fixed < 0 {
+				fixed = 0
+			}
+			summary.Fixed += fixed
+
+			// Update round result with actual fix counts
+			fh := fileHistories[r.File]
+			last := &fh.Rounds[len(fh.Rounds)-1]
+			last.IssuesAfter = after
+			last.Fixed = fixed
+		}
+
+		if !reResult.Parsed || len(reResult.Issues) == 0 {
+			fmt.Println("All issues resolved!")
+			break
+		}
+
+		// Filter to retryable issues
+		issues = filterRetryableIssues(reResult.Issues, fileHistories, explorationAttempted, a.cfg.StaleThreshold)
+	}
+
+	fmt.Printf("Results: %d fixed, %d failed (%d rounds).\n", summary.Fixed, summary.Failed, summary.Rounds)
+	return summary, nil
+}
+
+func (a *Agent) runRound(ctx context.Context, tasks []worker.Task) []worker.Result {
 	pool := worker.NewPool(a.cfg.Concurrency, a.executor)
-	results := pool.Run(ctx, tasks)
+	return pool.Run(ctx, tasks)
+}
 
-	summary := Summary{TotalIssues: len(issues), Tasks: len(tasks)}
+func (a *Agent) publishFixAttempt(r worker.Result, linterName string, round int, strategy loop.Strategy) {
+	a.pub.Publish(telemetry.Event{
+		Timestamp: time.Now(),
+		Type:      "fix_attempt",
+		Data: map[string]any{
+			"file":     r.File,
+			"success":  r.Success,
+			"duration": r.Duration.String(),
+			"issues":   r.IssuesFix,
+			"error":    r.Error,
+			"linter":   linterName,
+			"round":    round + 1,
+			"strategy": strategy.String(),
+		},
+	})
+}
+
+func (a *Agent) publishRoundComplete(round int, linterName string, taskCount int, results []worker.Result) {
+	fixed := 0
+	failed := 0
 	for _, r := range results {
 		if r.Success {
-			summary.Fixed += r.IssuesFix
+			fixed += r.IssuesFix
 		} else {
-			summary.Failed++
+			failed++
 		}
-		a.pub.Publish(telemetry.Event{
-			Timestamp: time.Now(),
-			Type:      "fix_attempt",
-			Data: map[string]any{
-				"file":     r.File,
-				"success":  r.Success,
-				"duration": r.Duration.String(),
-				"issues":   r.IssuesFix,
-				"error":    r.Error,
-				"linter":   linterName,
-			},
-		})
 	}
-
-	fmt.Printf("Results: %d fixed, %d failed out of %d tasks.\n", summary.Fixed, summary.Failed, summary.Tasks)
-	return summary, nil
+	a.pub.Publish(telemetry.Event{
+		Timestamp: time.Now(),
+		Type:      "round_complete",
+		Data: map[string]any{
+			"round":  round + 1,
+			"linter": linterName,
+			"tasks":  taskCount,
+			"fixed":  fixed,
+			"failed": failed,
+		},
+	})
 }
 
 func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterName string) (Summary, error) {
@@ -160,7 +302,7 @@ func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterNam
 	pool := worker.NewPool(a.cfg.Concurrency, a.executor)
 	results := pool.Run(ctx, []worker.Task{task})
 
-	summary := Summary{TotalIssues: 1, Tasks: 1}
+	summary := Summary{TotalIssues: 1, Tasks: 1, Rounds: 1}
 	for _, r := range results {
 		if r.Success {
 			summary.Fixed++
@@ -183,4 +325,29 @@ func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterNam
 
 	fmt.Printf("Results: %d fixed, %d failed out of %d tasks.\n", summary.Fixed, summary.Failed, summary.Tasks)
 	return summary, nil
+}
+
+func safeHistory(fh *loop.FileHistory) loop.FileHistory {
+	if fh == nil {
+		return loop.FileHistory{}
+	}
+	return *fh
+}
+
+// filterRetryableIssues removes issues for files that have exhausted all strategies.
+// A file is removed if exploration was attempted and it's still stagnant.
+func filterRetryableIssues(
+	issues []linter.Issue,
+	histories map[string]*loop.FileHistory,
+	explorationAttempted map[string]bool,
+	staleThreshold int,
+) []linter.Issue {
+	var retryable []linter.Issue
+	for _, iss := range issues {
+		if explorationAttempted[iss.File] && loop.DetectStagnation(safeHistory(histories[iss.File]), staleThreshold) {
+			continue
+		}
+		retryable = append(retryable, iss)
+	}
+	return retryable
 }

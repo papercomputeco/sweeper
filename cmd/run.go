@@ -15,6 +15,8 @@ import (
 
 func newRunCmd() *cobra.Command {
 	var dryRun bool
+	var maxRounds int
+	var staleThreshold int
 	cmd := &cobra.Command{
 		Use:   "run [-- command ...]",
 		Short: "Run sweeper against target directory",
@@ -22,15 +24,18 @@ func newRunCmd() *cobra.Command {
 
 Examples:
   sweeper run                              # default: golangci-lint
+  sweeper run --max-rounds 3               # retry up to 3 rounds
   sweeper run -- npm run lint              # arbitrary command
   npm run lint | sweeper run               # piped stdin`,
 		RunE: func(cmd *cobra.Command, args []string) error {
 			cfg := config.Config{
-				TargetDir:    targetDir,
-				Concurrency:  concurrency,
-				TelemetryDir: ".sweeper/telemetry",
-				DryRun:       dryRun,
-				NoTapes:      noTapes,
+				TargetDir:      targetDir,
+				Concurrency:    concurrency,
+				TelemetryDir:   ".sweeper/telemetry",
+				DryRun:         dryRun,
+				NoTapes:        noTapes,
+				MaxRounds:      maxRounds,
+				StaleThreshold: staleThreshold,
 			}
 
 			piped := isPiped()
@@ -78,6 +83,8 @@ Examples:
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be fixed without making changes")
+	cmd.Flags().IntVar(&maxRounds, "max-rounds", 1, "maximum retry rounds (1 = single pass)")
+	cmd.Flags().IntVar(&staleThreshold, "stale-threshold", 2, "consecutive non-improving rounds before exploration mode")
 	return cmd
 }
 

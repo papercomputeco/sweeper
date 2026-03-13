@@ -128,6 +128,117 @@ func (o *Observer) readFile(path string) ([]telemetry.Event, error) {
 	return events, scanner.Err()
 }
 
+// HistoricalInsight provides cross-run trend data computed from telemetry history.
+type HistoricalInsight struct {
+	SuccessRateTrend      []float64
+	RoundEffectiveness    map[int]float64
+	StrategyEffectiveness map[string]float64
+	TotalRuns             int
+}
+
+// AnalyzeHistory computes historical trends from all telemetry events.
+func (o *Observer) AnalyzeHistory() (HistoricalInsight, error) {
+	events, err := o.readAll()
+	if err != nil {
+		return HistoricalInsight{}, err
+	}
+
+	insight := HistoricalInsight{
+		RoundEffectiveness:    make(map[int]float64),
+		StrategyEffectiveness: make(map[string]float64),
+	}
+
+	if len(events) == 0 {
+		return insight, nil
+	}
+
+	// Group fix_attempt events by date (proxy for "run")
+	type runStats struct {
+		attempts  int
+		successes int
+	}
+	byDate := make(map[string]*runStats)
+	var dateOrder []string
+
+	type strategyStats struct {
+		attempts  int
+		successes int
+	}
+	roundFixed := make(map[int]int)
+	totalFixed := 0
+	byStrategy := make(map[string]*strategyStats)
+
+	for _, e := range events {
+		if e.Type != "fix_attempt" {
+			continue
+		}
+
+		date := e.Timestamp.Format("2006-01-02")
+		rs, ok := byDate[date]
+		if !ok {
+			rs = &runStats{}
+			byDate[date] = rs
+			dateOrder = append(dateOrder, date)
+		}
+		rs.attempts++
+		success, _ := e.Data["success"].(bool)
+		if success {
+			rs.successes++
+		}
+
+		// Round effectiveness
+		round := 1
+		if r, ok := e.Data["round"].(float64); ok {
+			round = int(r)
+		}
+		if success {
+			roundFixed[round]++
+			totalFixed++
+		}
+
+		// Strategy effectiveness
+		strategy := "standard"
+		if s, ok := e.Data["strategy"].(string); ok {
+			strategy = s
+		}
+		ss, ok := byStrategy[strategy]
+		if !ok {
+			ss = &strategyStats{}
+			byStrategy[strategy] = ss
+		}
+		ss.attempts++
+		if success {
+			ss.successes++
+		}
+	}
+
+	insight.TotalRuns = len(byDate)
+
+	// Success rate trend (chronological)
+	for _, date := range dateOrder {
+		rs := byDate[date]
+		if rs.attempts > 0 {
+			insight.SuccessRateTrend = append(insight.SuccessRateTrend, float64(rs.successes)/float64(rs.attempts))
+		}
+	}
+
+	// Round effectiveness
+	if totalFixed > 0 {
+		for round, fixed := range roundFixed {
+			insight.RoundEffectiveness[round] = float64(fixed) / float64(totalFixed)
+		}
+	}
+
+	// Strategy effectiveness
+	for strategy, ss := range byStrategy {
+		if ss.attempts > 0 {
+			insight.StrategyEffectiveness[strategy] = float64(ss.successes) / float64(ss.attempts)
+		}
+	}
+
+	return insight, nil
+}
+
 func (o *Observer) computeInsights(events []telemetry.Event) []Insight {
 	type stats struct {
 		attempts  int

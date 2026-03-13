@@ -8,6 +8,7 @@ import (
 
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
+	"github.com/papercomputeco/sweeper/pkg/loop"
 	"github.com/papercomputeco/sweeper/pkg/worker"
 )
 
@@ -256,4 +257,348 @@ func TestAgentRunTapesAvailable(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestAgentRunMultiRoundAllFixed(t *testing.T) {
+	callCount := 0
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		if callCount == 1 {
+			return linter.ParseResult{Issues: issues, Parsed: true}, nil
+		}
+		// Re-lint: all clean
+		return linter.ParseResult{Parsed: true}, nil
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: 1, Output: "fixed it"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      3,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Fixed != 1 {
+		t.Errorf("expected 1 fixed, got %d", summary.Fixed)
+	}
+	if summary.Rounds != 1 {
+		t.Errorf("expected 1 round, got %d", summary.Rounds)
+	}
+}
+
+func TestAgentRunMultiRoundWithRetry(t *testing.T) {
+	callCount := 0
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg1"},
+		{File: "a.go", Line: 5, Linter: "revive", Message: "msg2"},
+	}
+	reducedIssues := []linter.Issue{
+		{File: "a.go", Line: 5, Linter: "revive", Message: "msg2"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			return linter.ParseResult{Issues: issues, Parsed: true}, nil
+		case 2:
+			return linter.ParseResult{Issues: reducedIssues, Parsed: true}, nil
+		default:
+			return linter.ParseResult{Parsed: true}, nil
+		}
+	}
+	var gotRetryPrompt bool
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		if contains(task.Prompt, "previous attempt") {
+			gotRetryPrompt = true
+		}
+		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: len(task.Issues), Output: "attempt output"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      3,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gotRetryPrompt {
+		t.Error("expected retry prompt on round 2")
+	}
+	if summary.Rounds != 2 {
+		t.Errorf("expected 2 rounds, got %d", summary.Rounds)
+	}
+	if summary.Fixed != 2 {
+		t.Errorf("expected 2 fixed, got %d", summary.Fixed)
+	}
+}
+
+func TestAgentRunStagnationTriggersExploration(t *testing.T) {
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{Issues: issues, Parsed: true}, nil
+	}
+	var gotExplorationPrompt bool
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		if contains(task.Prompt, "WARNING") {
+			gotExplorationPrompt = true
+		}
+		return worker.Result{TaskID: task.ID, File: task.File, Success: false, Error: "failed", Output: "nope"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      5,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !gotExplorationPrompt {
+		t.Error("expected exploration prompt after stagnation")
+	}
+	// After exploration fails, the file should be dropped from retries
+	if summary.Rounds > 4 {
+		t.Errorf("expected loop to stop after exploration, got %d rounds", summary.Rounds)
+	}
+}
+
+func TestAgentRunReLintError(t *testing.T) {
+	callCount := 0
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		if callCount == 1 {
+			return linter.ParseResult{Issues: issues, Parsed: true}, nil
+		}
+		return linter.ParseResult{}, errors.New("relint broke")
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: 1}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      3,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal("should not return error on re-lint failure")
+	}
+	if summary.Fixed != 1 {
+		t.Errorf("expected 1 fixed from round 1, got %d", summary.Fixed)
+	}
+}
+
+func TestAgentRunDryRunSkipsLoop(t *testing.T) {
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{Issues: issues, Parsed: true}, nil
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		DryRun:         true,
+		MaxRounds:      3,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Rounds != 1 {
+		t.Errorf("dry run should report 1 round, got %d", summary.Rounds)
+	}
+}
+
+func TestFilterRetryableIssues(t *testing.T) {
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Message: "msg"},
+		{File: "b.go", Line: 2, Message: "msg"},
+	}
+	histories := map[string]*loop.FileHistory{
+		"a.go": {File: "a.go", Rounds: []loop.RoundResult{{Fixed: 0}, {Fixed: 0}}},
+	}
+	explored := map[string]bool{"a.go": true}
+
+	result := filterRetryableIssues(issues, histories, explored, 2)
+	if len(result) != 1 {
+		t.Errorf("expected 1 retryable issue, got %d", len(result))
+	}
+	if result[0].File != "b.go" {
+		t.Errorf("expected b.go to be retryable, got %s", result[0].File)
+	}
+}
+
+func TestFilterRetryableIssuesNoExploration(t *testing.T) {
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Message: "msg"},
+	}
+	histories := map[string]*loop.FileHistory{
+		"a.go": {File: "a.go", Rounds: []loop.RoundResult{{Fixed: 0}, {Fixed: 0}}},
+	}
+	explored := map[string]bool{}
+
+	result := filterRetryableIssues(issues, histories, explored, 2)
+	if len(result) != 1 {
+		t.Errorf("expected 1 retryable issue (exploration not tried), got %d", len(result))
+	}
+}
+
+func TestSafeHistoryNil(t *testing.T) {
+	fh := safeHistory(nil)
+	if fh.File != "" {
+		t.Error("nil should produce zero-value FileHistory")
+	}
+}
+
+func TestSafeHistoryNonNil(t *testing.T) {
+	fh := safeHistory(&loop.FileHistory{File: "test.go"})
+	if fh.File != "test.go" {
+		t.Errorf("expected test.go, got %s", fh.File)
+	}
+}
+
+func TestAgentRunReLintErrorWithFailedExecutor(t *testing.T) {
+	callCount := 0
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		if callCount == 1 {
+			return linter.ParseResult{Issues: issues, Parsed: true}, nil
+		}
+		return linter.ParseResult{}, errors.New("relint broke")
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: false, Error: "nope"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      3,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal("should not return error on re-lint failure")
+	}
+	if summary.Failed != 1 {
+		t.Errorf("expected 1 failed, got %d", summary.Failed)
+	}
+}
+
+func TestAgentRunMoreIssuesAfterFix(t *testing.T) {
+	callCount := 0
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	moreIssues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+		{File: "a.go", Line: 5, Linter: "revive", Message: "new msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		if callCount == 1 {
+			return linter.ParseResult{Issues: issues, Parsed: true}, nil
+		}
+		// Re-lint shows more issues than before (fix introduced new ones)
+		return linter.ParseResult{Issues: moreIssues, Parsed: true}, nil
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: 1, Output: "tried"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      2,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Round 1: 1 issue before, 2 after -> fixed clamped to 0
+	// Round 2 (last round): executor reports success
+	if summary.Fixed < 0 {
+		t.Errorf("fixed should never be negative, got %d", summary.Fixed)
+	}
+}
+
+func TestAgentRunMaxRoundsZero(t *testing.T) {
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{Issues: issues, Parsed: true}, nil
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: 1}
+	}
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+		MaxRounds:    0,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if summary.Rounds != 1 {
+		t.Errorf("MaxRounds=0 should default to 1 round, got %d", summary.Rounds)
+	}
+}
+
+func contains(s, substr string) bool {
+	return len(s) >= len(substr) && searchString(s, substr)
+}
+
+func searchString(s, substr string) bool {
+	for i := 0; i <= len(s)-len(substr); i++ {
+		if s[i:i+len(substr)] == substr {
+			return true
+		}
+	}
+	return false
 }

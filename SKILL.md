@@ -15,13 +15,15 @@ npm run lint | sweeper run               # piped stdin
 
 ### `sweeper run`
 
-Runs the full lint-fix loop:
+Runs the full lint-fix-retry loop:
 
 1. Executes a lint command (default: `golangci-lint run --out-format=line-number ./...`)
 2. Parses output using multi-format detection (golangci-lint, generic `file:line:col`, minimal `file:line`, or raw fallback)
 3. Groups structured issues by file into parallel fix tasks
-4. Dispatches parallel Claude Code sub-agents (default: 3) to fix each file
-5. Records outcomes to `.sweeper/telemetry/`
+4. Selects prompt strategy based on round number and file history (standard → retry → exploration)
+5. Dispatches parallel Claude Code sub-agents (default: 3) to fix each file
+6. Records outcomes to `.sweeper/telemetry/` with round and strategy metadata
+7. Re-lints to check remaining issues; repeats with escalated prompts (if `--max-rounds > 1`)
 
 **Input modes:**
 - `sweeper run` - Default: runs golangci-lint
@@ -33,6 +35,8 @@ Runs the full lint-fix loop:
 - `--concurrency, -c <n>` - Max parallel sub-agents (default: `3`)
 - `--dry-run` - Show what would be fixed without running agents
 - `--no-tapes` - Disable tapes session tracking
+- `--max-rounds <n>` - Maximum retry rounds (default: `1` = single pass)
+- `--stale-threshold <n>` - Consecutive non-improving rounds before exploration mode (default: `2`)
 
 **Example runs:**
 ```bash
@@ -54,6 +58,10 @@ cat lint-results.txt | sweeper run
 # Preview fixes
 sweeper run --dry-run
 sweeper run --dry-run -- npm run lint
+
+# Retry loop: re-lint after each round, escalate prompt strategy
+sweeper run --max-rounds 3
+sweeper run --max-rounds 5 --stale-threshold 3
 ```
 
 **Exit codes:**
@@ -111,6 +119,18 @@ Fix each issue. Do not change behavior. Only fix lint issues. Commit nothing.
 
 Multiple agents run concurrently across different files.
 
+### Retry loop (RL-inspired)
+
+When `--max-rounds > 1`, sweeper re-lints after each round and retries files with remaining issues. The prompt strategy escalates:
+
+- **Round 1 (standard)**: Normal fix prompt with issue list
+- **Round 2+ (retry)**: Includes prior attempt output, instructs agent to try a different approach
+- **After stagnation (exploration)**: WARNING directive, instructs agent to refactor surrounding code
+
+Stagnation is detected after `--stale-threshold` consecutive rounds with zero improvement on a file. After exploration is attempted and fails, the file is dropped from further retries.
+
+Telemetry events include `round` and `strategy` fields, enabling `sweeper observe` to show which rounds and strategies are most effective across runs.
+
 ### Raw output (fallback)
 
 When output cannot be parsed into structured issues, the full output is sent to a single agent for analysis:
@@ -125,9 +145,13 @@ Fix each issue you can identify. Do not change behavior. Only fix lint issues. C
 
 ## Telemetry
 
-Results are stored in `.sweeper/telemetry/YYYY-MM-DD.jsonl` relative to the target directory. Each line records: timestamp, file, success/failure, duration, issue count, linter name, and any error message.
+Results are stored in `.sweeper/telemetry/YYYY-MM-DD.jsonl` relative to the target directory.
 
-Use `sweeper observe` to analyze this data.
+Event types:
+- **fix_attempt**: Per-file fix result with file, success, duration, issue count, linter, round number, and prompt strategy
+- **round_complete**: Per-round summary with task count, fixed count, and failed count
+
+Use `sweeper observe` to analyze this data. It shows success rates per linter and, when multi-round telemetry exists, round effectiveness and strategy effectiveness trends.
 
 ## Troubleshooting
 

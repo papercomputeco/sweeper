@@ -279,6 +279,166 @@ func TestReadFileOpenError(t *testing.T) {
 	}
 }
 
+func TestAnalyzeHistoryEmpty(t *testing.T) {
+	dir := t.TempDir()
+	obs := New(dir)
+	hist, err := obs.AnalyzeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hist.TotalRuns != 0 {
+		t.Errorf("expected 0 runs, got %d", hist.TotalRuns)
+	}
+}
+
+func TestAnalyzeHistoryLegacyEvents(t *testing.T) {
+	dir := t.TempDir()
+	ts := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	events := []telemetry.Event{
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": true}},
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": false}},
+	}
+	writeEvents(t, dir, events)
+	obs := New(dir)
+	hist, err := obs.AnalyzeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hist.TotalRuns != 1 {
+		t.Errorf("expected 1 run, got %d", hist.TotalRuns)
+	}
+	if len(hist.SuccessRateTrend) != 1 {
+		t.Fatalf("expected 1 trend point, got %d", len(hist.SuccessRateTrend))
+	}
+	if hist.SuccessRateTrend[0] != 0.5 {
+		t.Errorf("expected 0.5 success rate, got %f", hist.SuccessRateTrend[0])
+	}
+	// Legacy events default to round=1, strategy=standard
+	if rate, ok := hist.RoundEffectiveness[1]; !ok || rate != 1.0 {
+		t.Errorf("expected round 1 = 1.0, got %v", hist.RoundEffectiveness)
+	}
+	if rate, ok := hist.StrategyEffectiveness["standard"]; !ok || rate != 0.5 {
+		t.Errorf("expected standard = 0.5, got %v", hist.StrategyEffectiveness)
+	}
+}
+
+func TestAnalyzeHistoryWithRounds(t *testing.T) {
+	dir := t.TempDir()
+	ts := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	events := []telemetry.Event{
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": true, "round": float64(1), "strategy": "standard"}},
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": false, "round": float64(1), "strategy": "standard"}},
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": true, "round": float64(2), "strategy": "retry"}},
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": false, "round": float64(3), "strategy": "exploration"}},
+	}
+	writeEvents(t, dir, events)
+	obs := New(dir)
+	hist, err := obs.AnalyzeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// 2 successes total: 1 in round 1, 1 in round 2
+	if hist.RoundEffectiveness[1] != 0.5 {
+		t.Errorf("expected round 1 = 0.5, got %f", hist.RoundEffectiveness[1])
+	}
+	if hist.RoundEffectiveness[2] != 0.5 {
+		t.Errorf("expected round 2 = 0.5, got %f", hist.RoundEffectiveness[2])
+	}
+	// Strategy: standard 1/2=0.5, retry 1/1=1.0, exploration 0/1=0.0
+	if hist.StrategyEffectiveness["standard"] != 0.5 {
+		t.Errorf("expected standard = 0.5, got %f", hist.StrategyEffectiveness["standard"])
+	}
+	if hist.StrategyEffectiveness["retry"] != 1.0 {
+		t.Errorf("expected retry = 1.0, got %f", hist.StrategyEffectiveness["retry"])
+	}
+	if hist.StrategyEffectiveness["exploration"] != 0.0 {
+		t.Errorf("expected exploration = 0.0, got %f", hist.StrategyEffectiveness["exploration"])
+	}
+}
+
+func TestAnalyzeHistoryMultipleRuns(t *testing.T) {
+	dir := t.TempDir()
+	os.MkdirAll(dir, 0o755)
+	// Write two date files to simulate two runs
+	ts1 := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
+	ts2 := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+
+	f1, _ := os.Create(filepath.Join(dir, "2026-03-12.jsonl"))
+	e1 := telemetry.Event{Timestamp: ts1, Type: "fix_attempt", Data: map[string]any{"success": false}}
+	data1, _ := json.Marshal(e1)
+	f1.Write(append(data1, '\n'))
+	f1.Close()
+
+	f2, _ := os.Create(filepath.Join(dir, "2026-03-13.jsonl"))
+	e2 := telemetry.Event{Timestamp: ts2, Type: "fix_attempt", Data: map[string]any{"success": true}}
+	data2, _ := json.Marshal(e2)
+	f2.Write(append(data2, '\n'))
+	f2.Close()
+
+	obs := New(dir)
+	hist, err := obs.AnalyzeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hist.TotalRuns != 2 {
+		t.Errorf("expected 2 runs, got %d", hist.TotalRuns)
+	}
+	if len(hist.SuccessRateTrend) != 2 {
+		t.Fatalf("expected 2 trend points, got %d", len(hist.SuccessRateTrend))
+	}
+}
+
+func TestAnalyzeHistoryNoSuccesses(t *testing.T) {
+	dir := t.TempDir()
+	ts := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	events := []telemetry.Event{
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": false}},
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": false}},
+	}
+	writeEvents(t, dir, events)
+	obs := New(dir)
+	hist, err := obs.AnalyzeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No successes means no round effectiveness entries
+	if len(hist.RoundEffectiveness) != 0 {
+		t.Errorf("expected empty round effectiveness, got %v", hist.RoundEffectiveness)
+	}
+}
+
+func TestAnalyzeHistorySkipsNonFixEvents(t *testing.T) {
+	dir := t.TempDir()
+	ts := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
+	events := []telemetry.Event{
+		{Timestamp: ts, Type: "round_complete", Data: map[string]any{"round": float64(1)}},
+		{Timestamp: ts, Type: "fix_attempt", Data: map[string]any{"success": true}},
+	}
+	writeEvents(t, dir, events)
+	obs := New(dir)
+	hist, err := obs.AnalyzeHistory()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if hist.TotalRuns != 1 {
+		t.Errorf("expected 1 run (round_complete skipped), got %d", hist.TotalRuns)
+	}
+}
+
+func TestAnalyzeHistoryReadError(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "unreadable.jsonl")
+	os.WriteFile(path, []byte("data"), 0o644)
+	os.Chmod(path, 0o000)
+	t.Cleanup(func() { os.Chmod(path, 0o644) })
+
+	obs := New(dir)
+	_, err := obs.AnalyzeHistory()
+	if err == nil {
+		t.Error("expected error reading unreadable file")
+	}
+}
+
 func TestEnrichWithTapesReaderError(t *testing.T) {
 	dir := t.TempDir()
 	events := []telemetry.Event{

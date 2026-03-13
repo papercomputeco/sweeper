@@ -6,14 +6,21 @@ Sweeper runs your linter, groups issues by file, dispatches concurrent Claude Co
 
 ## Approach
 
-Sweeper follows a **read-decide-act-observe** loop:
+Sweeper follows a **read-decide-act-observe** loop inspired by reinforcement learning:
 
 1. **Read** - Run a lint command on the target codebase, parse structured issues
-2. **Decide** - Group issues by file into fix tasks
+2. **Decide** - Group issues by file into fix tasks, select prompt strategy based on history
 3. **Act** - Dispatch parallel Claude Code sub-agents to apply fixes
 4. **Observe** - Record outcomes to JSONL telemetry, extract success patterns per linter
+5. **Retry** - Re-lint to check remaining issues, escalate prompt strategy, repeat
 
-Each sub-agent receives a focused prompt for a single file listing the exact lint issues (line numbers, messages, linter names) and is instructed to fix only those issues without changing behavior.
+Each sub-agent receives a focused prompt for a single file. The prompt strategy escalates across retry rounds:
+
+- **Standard** (round 1): Exact lint issues with line numbers and fix instructions
+- **Retry** (round 2+): Includes prior attempt output with directive to try a different approach
+- **Exploration** (after stagnation): WARNING directive to refactor surrounding code
+
+Stagnation detection fires after consecutive non-improving rounds, triggering the exploration strategy. This mirrors the bounds/history/stagnation pattern from AlphaEvolve-style evolution loops.
 
 ## Prerequisites
 
@@ -56,7 +63,11 @@ npm run lint 2>&1 | ./sweeper run
 ./sweeper run --dry-run
 ./sweeper run --dry-run -- npm run lint
 
-# Analyze past run outcomes
+# Retry loop: re-lint after each round, escalate prompt strategy
+./sweeper run --max-rounds 3
+./sweeper run --max-rounds 5 --stale-threshold 3
+
+# Analyze past run outcomes and historical trends
 ./sweeper observe
 
 # Disable tapes integration
@@ -71,6 +82,8 @@ npm run lint 2>&1 | ./sweeper run
 | `--concurrency` | `-c` | `3` | Max parallel sub-agents |
 | `--no-tapes` | | `false` | Disable tapes integration |
 | `--dry-run` | | `false` | Show plan without executing (run only) |
+| `--max-rounds` | | `1` | Maximum retry rounds (1 = single pass) |
+| `--stale-threshold` | | `2` | Consecutive non-improving rounds before exploration |
 
 ### Input Modes
 
@@ -131,12 +144,13 @@ If no lines match any pattern, the full output is sent to a single agent for ana
 | Package | Purpose |
 |---------|---------|
 | `cmd/` | CLI commands via Cobra |
-| `pkg/agent/` | Orchestrates the lint-plan-fix-record loop |
+| `pkg/agent/` | Orchestrates the lint-plan-fix-retry loop with prompt escalation |
+| `pkg/loop/` | Shared types for retry loop: Strategy enum, FileHistory, stagnation detection |
 | `pkg/linter/` | Runs lint commands, parses output into `Issue` structs via multi-format detection |
 | `pkg/planner/` | Groups issues by file into `FixTask` slices |
 | `pkg/worker/` | Bounded worker pool, task/result types, Claude executor |
 | `pkg/telemetry/` | JSONL event writer to `.sweeper/telemetry/` |
-| `pkg/observer/` | Reads telemetry, computes success rates per linter |
+| `pkg/observer/` | Reads telemetry, computes success rates per linter, historical trends |
 | `pkg/tapes/` | Detects and reads tapes SQLite DB for token usage |
 | `pkg/config/` | Config struct with defaults |
 
@@ -151,7 +165,11 @@ If no lines match any pattern, the full output is sent to a single agent for ana
 
 ### Telemetry
 
-Events are written to `.sweeper/telemetry/YYYY-MM-DD.jsonl`. Each line is a JSON object with timestamp, event type, and data (file, success, duration, issue count, linter name, error).
+Events are written to `.sweeper/telemetry/YYYY-MM-DD.jsonl`. Each line is a JSON object with timestamp, event type, and data.
+
+Event types:
+- **fix_attempt**: Per-file fix result with file, success, duration, issue count, linter, round number, and prompt strategy
+- **round_complete**: Per-round summary with task count, fixed count, and failed count
 
 ### Tapes Integration
 

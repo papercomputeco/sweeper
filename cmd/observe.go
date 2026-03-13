@@ -44,6 +44,24 @@ func newObserveCmd() *cobra.Command {
 				}
 				fmt.Println(line)
 			}
+
+			hist, err := obs.AnalyzeHistory()
+			if err == nil && hist.TotalRuns > 0 {
+				fmt.Printf("\nHistorical trends (%d runs):\n", hist.TotalRuns)
+				if len(hist.RoundEffectiveness) > 0 {
+					fmt.Println("  Round effectiveness:")
+					for round, rate := range hist.RoundEffectiveness {
+						fmt.Printf("    Round %d: %.0f%% of fixes\n", round, rate*100)
+					}
+				}
+				if len(hist.StrategyEffectiveness) > 0 {
+					fmt.Println("  Strategy effectiveness:")
+					for strategy, rate := range hist.StrategyEffectiveness {
+						fmt.Printf("    %-15s %.0f%% success\n", strategy, rate*100)
+					}
+				}
+			}
+
 			return nil
 		},
 	}
