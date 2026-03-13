@@ -32,8 +32,11 @@ func TestFindDBNotFound(t *testing.T) {
 
 func TestFindDBHomeFallback(t *testing.T) {
 	dir := t.TempDir()
+	// TestMain sets HOME to an empty temp dir, so no home fallback should be found
 	result := FindDB(dir)
-	_ = result
+	if result != "" {
+		t.Errorf("expected empty string with no home tapes, got %s", result)
+	}
 }
 
 func TestCheckInstallation(t *testing.T) {

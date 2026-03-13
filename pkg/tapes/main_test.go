@@ -11,7 +11,10 @@ func TestMain(m *testing.M) {
 	dir, err := os.MkdirTemp("", "tapes-test-home-*")
 	if err == nil {
 		os.Setenv("HOME", dir)
-		defer os.RemoveAll(dir)
 	}
-	os.Exit(m.Run())
+	code := m.Run()
+	if dir != "" {
+		os.RemoveAll(dir)
+	}
+	os.Exit(code)
 }
