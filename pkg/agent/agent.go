@@ -4,9 +4,11 @@ import (
 	"context"
 	"fmt"
 	"time"
+
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
 	"github.com/papercomputeco/sweeper/pkg/planner"
+	"github.com/papercomputeco/sweeper/pkg/tapes"
 	"github.com/papercomputeco/sweeper/pkg/telemetry"
 	"github.com/papercomputeco/sweeper/pkg/worker"
 )
@@ -52,6 +54,15 @@ func New(cfg config.Config, opts ...Option) *Agent {
 
 func (a *Agent) Run(ctx context.Context) (Summary, error) {
 	defer a.pub.Close()
+
+	if !a.cfg.NoTapes {
+		status := tapes.CheckInstallation(tapes.FindDB(a.cfg.TargetDir))
+		if status.Available {
+			fmt.Printf("Tapes: using %s\n", status.DBPath)
+		} else if status.Message != "" {
+			fmt.Printf("Warning: %s\n", status.Message)
+		}
+	}
 
 	fmt.Println("Running linter...")
 	issues, err := a.linterFn(ctx, a.cfg.TargetDir)

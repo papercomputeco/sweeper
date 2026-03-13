@@ -8,6 +8,39 @@ import (
 	"github.com/papercomputeco/sweeper/pkg/worker"
 )
 
+func TestAgentRunPrintsTapesWarning(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+	}
+	fakeLinter := func(ctx context.Context, dir string) ([]linter.Issue, error) {
+		return nil, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentRunSkipsTapesWithFlag(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+	}
+	fakeLinter := func(ctx context.Context, dir string) ([]linter.Issue, error) {
+		return nil, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestAgentRunWithFakeExecutor(t *testing.T) {
 	dir := t.TempDir()
 	cfg := config.Config{
