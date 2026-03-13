@@ -129,7 +129,24 @@ When `--max-rounds > 1`, sweeper re-lints after each round and retries files wit
 
 Stagnation is detected after `--stale-threshold` consecutive rounds with zero improvement on a file. After exploration is attempted and fails, the file is dropped from further retries.
 
+**Internal loop architecture** (`pkg/loop/`):
+
+- **Strategy enum**: `StrategyStandard`, `StrategyRetry`, `StrategyExploration` — selected by `PickStrategy(round, fileHistory, staleThreshold)`
+- **FileHistory**: Tracks `RoundResult` per file across rounds (issues before/after, output, strategy used)
+  - `Improved()` — did the latest round fix at least one issue?
+  - `ConsecutiveStale()` — trailing count of rounds with zero improvement
+  - `LastOutput()` — prior attempt output fed into retry/exploration prompts
+- **DetectStagnation**: `ConsecutiveStale() >= staleThreshold` triggers exploration
+- **filterRetryableIssues**: Drops files where exploration was attempted and stagnation persists
+
+The agent loop (`pkg/agent/`) orchestrates: lint → group by file → pick strategy per file → build prompt → dispatch pool → publish telemetry → re-lint → update histories → filter retryable → repeat.
+
 Telemetry events include `round` and `strategy` fields, enabling `sweeper observe` to show which rounds and strategies are most effective across runs.
+
+**Historical insights** (`sweeper observe` with multi-round data):
+- **Success rate trend**: Per-run success rates over time
+- **Round effectiveness**: Fraction of total fixes contributed by each round number
+- **Strategy effectiveness**: Success rate per prompt strategy (standard/retry/exploration)
 
 ### Raw output (fallback)
 
