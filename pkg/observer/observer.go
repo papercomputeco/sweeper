@@ -63,8 +63,10 @@ func (o *Observer) Analyze() ([]Insight, error) {
 	return insights, nil
 }
 
+const tapesSessionWindow = 50
+
 func (o *Observer) enrichWithTapes(insights []Insight) {
-	hashes, err := o.tapesReader.RecentSessions(50)
+	hashes, err := o.tapesReader.RecentSessions(tapesSessionWindow)
 	if err != nil {
 		return
 	}

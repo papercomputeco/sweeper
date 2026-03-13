@@ -52,8 +52,8 @@ func TestObserveEmptyDir(t *testing.T) {
 	}
 }
 
-func TestObserveWithTapesReader(t *testing.T) {
-	// Verifies observer works with tapesEnabled=true but tapesReader=nil (no enrichment path).
+func TestObserveWithTapesEnabledNilReader(t *testing.T) {
+	// Verifies enrichment is skipped when tapesEnabled=true but tapesReader=nil.
 	dir := t.TempDir()
 	events := []telemetry.Event{
 		{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": true}},
