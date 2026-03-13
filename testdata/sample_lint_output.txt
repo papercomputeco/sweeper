@@ -1,0 +1,4 @@
+server.go:42:2: `err` is not used (ineffassign)
+server.go:55:1: exported function `Handle` should have comment or be unexported (revive)
+handler.go:18:6: S1000: should use a simple channel send/receive instead of `select` with a single case (gosimple)
+utils.go:7:2: "fmt" imported and not used (typecheck)
