@@ -18,6 +18,8 @@ func NewRootCmd() *cobra.Command {
 	root.PersistentFlags().StringVarP(&targetDir, "target", "t", ".", "target directory to maintain")
 	root.PersistentFlags().IntVarP(&concurrency, "concurrency", "c", 3, "max parallel sub-agents")
 	root.AddCommand(newVersionCmd())
+	root.AddCommand(newRunCmd())
+	root.AddCommand(newObserveCmd())
 	return root
 }
 
