@@ -5,11 +5,15 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"os/signal"
 	"path/filepath"
+	"syscall"
 
 	"github.com/papercomputeco/sweeper/pkg/agent"
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
+	"github.com/papercomputeco/sweeper/pkg/vm"
+	"github.com/papercomputeco/sweeper/pkg/worker"
 	"github.com/spf13/cobra"
 )
 
@@ -17,6 +21,9 @@ func newRunCmd() *cobra.Command {
 	var dryRun bool
 	var maxRounds int
 	var staleThreshold int
+	var useVM bool
+	var vmName string
+	var vmJcard string
 	cmd := &cobra.Command{
 		Use:   "run [-- command ...]",
 		Short: "Run sweeper against target directory",
@@ -28,6 +35,9 @@ Examples:
   sweeper run -- npm run lint              # arbitrary command
   npm run lint | sweeper run               # piped stdin`,
 		RunE: func(cmd *cobra.Command, args []string) error {
+			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+			defer cancel()
+
 			cfg := config.Config{
 				TargetDir:      targetDir,
 				Concurrency:    concurrency,
@@ -69,8 +79,38 @@ Examples:
 				))
 			}
 
+			if vmName != "" || vmJcard != "" {
+				useVM = true
+			}
+			cfg.VM = useVM
+			cfg.VMName = vmName
+			cfg.VMJcard = vmJcard
+
+			if useVM {
+				absTarget, _ := filepath.Abs(cfg.TargetDir)
+				if cfg.VMName != "" {
+					vmHandle := vm.Attach(cfg.VMName, absTarget)
+					opts = append(opts, agent.WithVM(vmHandle))
+					opts = append(opts, agent.WithExecutor(worker.NewVMExecutor(vmHandle)))
+					fmt.Printf("VM: using existing VM %s\n", cfg.VMName)
+				} else {
+					name := vm.NewVMName()
+					jcardDir := filepath.Join(absTarget, ".sweeper", "vm")
+					if cfg.VMJcard != "" {
+						jcardDir = filepath.Dir(cfg.VMJcard)
+					}
+					vmHandle, err := vm.Boot(name, absTarget, jcardDir)
+					if err != nil {
+						return fmt.Errorf("booting VM: %w", err)
+					}
+					opts = append(opts, agent.WithVM(vmHandle))
+					opts = append(opts, agent.WithExecutor(worker.NewVMExecutor(vmHandle)))
+					fmt.Printf("VM: booted %s (managed, will teardown on exit)\n", name)
+				}
+			}
+
 			a := agent.New(cfg, opts...)
-			summary, err := a.Run(context.Background())
+			summary, err := a.Run(ctx)
 			if err != nil {
 				return err
 			}
@@ -85,6 +125,9 @@ Examples:
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be fixed without making changes")
 	cmd.Flags().IntVar(&maxRounds, "max-rounds", 1, "maximum retry rounds (1 = single pass)")
 	cmd.Flags().IntVar(&staleThreshold, "stale-threshold", 2, "consecutive non-improving rounds before exploration mode")
+	cmd.Flags().BoolVar(&useVM, "vm", false, "boot ephemeral stereOS VM, teardown on exit")
+	cmd.Flags().StringVar(&vmName, "vm-name", "", "use existing VM by name (no managed lifecycle, implies --vm)")
+	cmd.Flags().StringVar(&vmJcard, "vm-jcard", "", "custom jcard.toml path (implies --vm)")
 	return cmd
 }
 

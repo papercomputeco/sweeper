@@ -16,6 +16,11 @@ import (
 
 type LinterFunc func(ctx context.Context, dir string) (linter.ParseResult, error)
 
+// VMManager is the interface for VM lifecycle management.
+type VMManager interface {
+	Shutdown() error
+}
+
 type Summary struct {
 	TotalIssues int
 	Tasks       int
@@ -29,6 +34,7 @@ type Agent struct {
 	linterFn LinterFunc
 	executor worker.Executor
 	pub      *telemetry.Publisher
+	vm       VMManager
 }
 
 type Option func(*Agent)
@@ -39,6 +45,10 @@ func WithLinterFunc(fn LinterFunc) Option {
 
 func WithExecutor(exec worker.Executor) Option {
 	return func(a *Agent) { a.executor = exec }
+}
+
+func WithVM(vm VMManager) Option {
+	return func(a *Agent) { a.vm = vm }
 }
 
 func defaultLinterFunc(ctx context.Context, dir string) (linter.ParseResult, error) {
@@ -60,6 +70,9 @@ func New(cfg config.Config, opts ...Option) *Agent {
 
 func (a *Agent) Run(ctx context.Context) (Summary, error) {
 	defer a.pub.Close()
+	if a.vm != nil {
+		defer a.vm.Shutdown()
+	}
 
 	if !a.cfg.NoTapes {
 		status := tapes.CheckInstallation(tapes.FindDB(a.cfg.TargetDir))
