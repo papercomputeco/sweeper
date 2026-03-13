@@ -3,3 +3,6 @@ sweeper
 .claude/
 *.jsonl
 coverage.out
+
+# Sweeper ephemeral VM jcards (contain secrets)
+.sweeper/vm/

@@ -590,6 +590,104 @@ func TestAgentRunMaxRoundsZero(t *testing.T) {
 	}
 }
 
+type fakeVMForAgent struct {
+	shutdownFn func() error
+}
+
+func (f *fakeVMForAgent) Shutdown() error {
+	if f.shutdownFn != nil {
+		return f.shutdownFn()
+	}
+	return nil
+}
+
+func TestAgentWithVMOption(t *testing.T) {
+	var shutdownCalled bool
+	fakeVM := &fakeVMForAgent{
+		shutdownFn: func() error {
+			shutdownCalled = true
+			return nil
+		},
+	}
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+		VM:           true,
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithVM(fakeVM))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shutdownCalled {
+		t.Error("expected VM.Shutdown() to be called via defer")
+	}
+}
+
+func TestAgentWithVMDryRun(t *testing.T) {
+	var shutdownCalled bool
+	fakeVM := &fakeVMForAgent{
+		shutdownFn: func() error {
+			shutdownCalled = true
+			return nil
+		},
+	}
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+		VM:           true,
+		DryRun:       true,
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{
+			Issues: []linter.Issue{{File: "a.go", Line: 1, Linter: "revive", Message: "msg"}},
+			Parsed: true,
+		}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithVM(fakeVM))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !shutdownCalled {
+		t.Error("VM.Shutdown() should fire even in dry-run mode")
+	}
+}
+
+func TestAgentWithVMContextCancel(t *testing.T) {
+	var shutdownCalled bool
+	fakeVM := &fakeVMForAgent{
+		shutdownFn: func() error {
+			shutdownCalled = true
+			return nil
+		},
+	}
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+		VM:           true,
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // Cancel immediately to simulate SIGINT
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, ctx.Err()
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithVM(fakeVM))
+	_, _ = a.Run(ctx) // May return error from cancelled context
+	if !shutdownCalled {
+		t.Error("VM.Shutdown() should fire on context cancellation")
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }

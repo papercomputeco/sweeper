@@ -28,6 +28,7 @@ Stagnation detection fires after consecutive non-improving rounds, triggering th
 - **Claude Code CLI** (`claude`) in PATH
 - **golangci-lint** in PATH (only needed for default mode)
 - **Tapes** (optional) - local session database at `~/.tapes/tapes.db` for token tracking
+- **mb** (optional) - Masterblaster CLI for stereOS VMs, required only with `--vm`
 
 ## Setup
 
@@ -67,6 +68,13 @@ npm run lint 2>&1 | ./sweeper run
 ./sweeper run --max-rounds 3
 ./sweeper run --max-rounds 5 --stale-threshold 3
 
+# Run inside a stereOS VM (secret isolation, no nesting conflicts)
+./sweeper run --vm -- npx eslint --quiet .
+./sweeper run --vm --max-rounds 3 -c 5 -- npx eslint --quiet .
+
+# Use an existing VM (skip boot/teardown)
+./sweeper run --vm-name my-vm -- npx eslint --quiet .
+
 # Analyze past run outcomes and historical trends
 ./sweeper observe
 
@@ -84,6 +92,9 @@ npm run lint 2>&1 | ./sweeper run
 | `--dry-run` | | `false` | Show plan without executing (run only) |
 | `--max-rounds` | | `1` | Maximum retry rounds (1 = single pass) |
 | `--stale-threshold` | | `2` | Consecutive non-improving rounds before exploration |
+| `--vm` | | `false` | Boot ephemeral stereOS VM, teardown on exit |
+| `--vm-name` | | | Use existing VM by name (no managed lifecycle) |
+| `--vm-jcard` | | | Custom jcard.toml path (implies `--vm`) |
 
 ### Input Modes
 
@@ -124,9 +135,15 @@ If no lines match any pattern, the full output is sent to a single agent for ana
         └─────────┘ └─────┘ └────┬────┘
                                   │
                           ┌───────▼───────┐
-                          │ Claude Code   │
-                          │ Executor      │
-                          │ (claude CLI)  │
+                          │  Executor     │
+                          │ Local (claude)│
+                          │ or VM (mb ssh)│
+                          └──────┬────────┘
+                                 │
+                          ┌──────▼────────┐
+                          │ stereOS VM    │
+                          │ pkg/vm/       │
+                          │ (optional)    │
                           └───────────────┘
         ┌─────────┐  ┌──────────┐
         │Telemetry│  │ Observer │◄── reads telemetry
@@ -148,7 +165,8 @@ If no lines match any pattern, the full output is sent to a single agent for ana
 | `pkg/loop/` | Shared types for retry loop: Strategy enum, FileHistory, stagnation detection |
 | `pkg/linter/` | Runs lint commands, parses output into `Issue` structs via multi-format detection |
 | `pkg/planner/` | Groups issues by file into `FixTask` slices |
-| `pkg/worker/` | Bounded worker pool, task/result types, Claude executor |
+| `pkg/worker/` | Bounded worker pool, task/result types, Claude executor, VM executor |
+| `pkg/vm/` | stereOS VM lifecycle: boot, exec via SSH, shutdown, jcard generation |
 | `pkg/telemetry/` | JSONL event writer to `.sweeper/telemetry/` |
 | `pkg/observer/` | Reads telemetry, computes success rates per linter, historical trends |
 | `pkg/tapes/` | Detects and reads tapes SQLite DB for token usage |
@@ -159,7 +177,7 @@ If no lines match any pattern, the full output is sent to a single agent for ana
 1. `linter.Run()` / `linter.RunCommand()` runs the lint command, parses output via multi-format regex
 2. `planner.GroupByFile()` groups issues into per-file tasks (or single raw task for unparseable output)
 3. `worker.NewPool()` runs tasks through a semaphore-bounded goroutine pool
-4. `worker.ClaudeExecutor()` shells out to `claude --print --dangerously-skip-permissions` per task
+4. `worker.ClaudeExecutor()` shells out to `claude --print` locally, or `worker.NewVMExecutor()` runs it inside a stereOS VM via `mb ssh`
 5. `telemetry.Publisher` writes each result as a JSONL event
 6. `observer.Analyze()` reads JSONL files and computes per-linter success rates, optionally enriched with tapes token data
 

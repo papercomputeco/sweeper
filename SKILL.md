@@ -37,6 +37,9 @@ Runs the full lint-fix-retry loop:
 - `--no-tapes` - Disable tapes session tracking
 - `--max-rounds <n>` - Maximum retry rounds (default: `1` = single pass)
 - `--stale-threshold <n>` - Consecutive non-improving rounds before exploration mode (default: `2`)
+- `--vm` - Boot ephemeral stereOS VM, teardown on exit
+- `--vm-name <name>` - Use existing VM by name (no managed lifecycle, implies `--vm`)
+- `--vm-jcard <path>` - Custom jcard.toml path (implies `--vm`)
 
 **Example runs:**
 ```bash
@@ -62,6 +65,18 @@ sweeper run --dry-run -- npm run lint
 # Retry loop: re-lint after each round, escalate prompt strategy
 sweeper run --max-rounds 3
 sweeper run --max-rounds 5 --stale-threshold 3
+
+# Run inside an ephemeral stereOS VM (full isolation)
+sweeper run --vm -- npx eslint --quiet .
+
+# VM with retry loop
+sweeper run --vm --max-rounds 3 -c 5 -- npx eslint --quiet .
+
+# Use an existing VM (skip boot/teardown)
+sweeper run --vm-name my-vm -- npx eslint --quiet .
+
+# Custom jcard for VM configuration
+sweeper run --vm --vm-jcard ./custom-jcard.toml -- cargo clippy 2>&1
 ```
 
 **Exit codes:**
@@ -90,8 +105,44 @@ Before running sweeper, ensure these are available:
 1. **claude** - Claude Code CLI must be in PATH. The tool invokes `claude --print --dangerously-skip-permissions <prompt>` for each fix task.
 2. **golangci-lint** (only for default mode) - Must be in PATH. Install: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 3. **tapes** (optional) - If `~/.tapes/tapes.db` exists, sweeper tracks token usage per session.
+4. **mb** (optional, for `--vm` mode) - Masterblaster CLI for stereOS VMs. Required only when using `--vm` flag.
 
 When using `-- <command>` or piped input, golangci-lint is not required.
+
+## VM Isolation (stereOS)
+
+Use `--vm` to run sub-agents inside a stereOS virtual machine. This provides:
+
+- **Secret isolation**: `ANTHROPIC_API_KEY` and other credentials stay inside the VM. No risk of secrets bleeding into host processes, IDE plugins, or other tools sharing the same shell environment.
+- **Resource isolation**: Sub-agents get dedicated CPU/memory inside the VM instead of competing with your IDE and other local processes.
+- **No nesting conflicts**: `claude --print` fails inside active Claude Code sessions due to nesting detection. The VM sidesteps this entirely — agents run in a clean environment.
+- **Clean teardown**: Ephemeral VMs are destroyed when sweeper exits (success, failure, or interrupt). Nothing persists.
+
+### When to use `--vm`
+
+| Scenario | Recommendation |
+|---|---|
+| Running sweeper inside a Claude Code session | Use `--vm` (avoids CLAUDECODE nesting error) |
+| Working with sensitive API keys or tokens | Use `--vm` (prevents secret bleeding) |
+| High concurrency (5+ agents) | Use `--vm` (dedicated resources) |
+| Quick single-file fix | Skip `--vm` (local is faster) |
+| CI/CD pipeline | Use `--vm` (hermetic environment) |
+
+### Prerequisites for `--vm`
+
+1. **mb** (Masterblaster CLI) must be in PATH. This is the stereOS VM manager.
+2. **ANTHROPIC_API_KEY** must be set — it's passed into the VM via the jcard.
+
+### Lifecycle
+
+Sweeper manages the full VM lifecycle when `--vm` is used without a name:
+
+1. Generates an ephemeral `jcard.toml` in `.sweeper/vm/`
+2. Boots the VM via `mb up`
+3. Executes all sub-agents inside the VM via SSH
+4. Tears down the VM via `mb destroy` on exit (deferred — fires on success, failure, or SIGINT)
+
+Use `--vm-name <name>` to attach to an existing VM. Sweeper skips boot and teardown — the VM is yours to manage.
 
 ## Building from Source
 

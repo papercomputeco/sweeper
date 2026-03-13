@@ -251,6 +251,32 @@ func TestReaderListSessionsScanError(t *testing.T) {
 	_ = err
 }
 
+func TestReaderGetSessionNullTimestamp(t *testing.T) {
+	// Insert a node with NULL created_at to exercise the scan error
+	// path when scanning NULL into time.Time.
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.Exec(`CREATE TABLE nodes (
+		hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, content JSON,
+		model TEXT, provider TEXT, agent_name TEXT, prompt_tokens INTEGER,
+		completion_tokens INTEGER, total_tokens INTEGER,
+		cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER,
+		project TEXT, created_at TEXT
+	)`)
+	// Explicitly insert NULL created_at (no DEFAULT) to trigger scan error
+	db.Exec(`INSERT INTO nodes (hash, parent_hash, role, content, model, prompt_tokens, completion_tokens, total_tokens, created_at)
+		VALUES ('root1', NULL, 'user', '[]', 'model', 0, 0, 0, NULL)`)
+	reader := NewReaderFromDB(db)
+	// GetSession tries to scan NULL into time.Time which may error.
+	// Either way, exercise the code path.
+	session, err := reader.GetSession("root1")
+	_ = session
+	_ = err
+}
+
 func TestReaderGetSessionScanError(t *testing.T) {
 	db, err := sql.Open("sqlite", ":memory:")
 	if err != nil {

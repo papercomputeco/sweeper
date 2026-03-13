@@ -439,6 +439,68 @@ func TestAnalyzeHistoryReadError(t *testing.T) {
 	}
 }
 
+func TestEnrichWithTapesZeroAttempts(t *testing.T) {
+	dir := t.TempDir()
+	// Write non-fix_attempt events so computeInsights returns empty insights.
+	// This means enrichWithTapes receives insights with totalAttempts == 0.
+	events := []telemetry.Event{
+		{Timestamp: time.Now(), Type: "round_complete", Data: map[string]any{"round": float64(1)}},
+	}
+	writeEvents(t, dir, events)
+	reader := setupTapesDB(t) // has sessions with tokens
+	obs := New(dir, WithTapesReader(reader))
+	insights, err := obs.Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No fix_attempt events → no insights → enrichWithTapes hits totalAttempts == 0 return.
+	for _, ins := range insights {
+		if ins.TotalTokens != 0 {
+			t.Errorf("expected TotalTokens=0 with zero attempts, got %d", ins.TotalTokens)
+		}
+	}
+}
+
+func TestEnrichWithTapesGetSessionError(t *testing.T) {
+	dir := t.TempDir()
+	events := []telemetry.Event{
+		{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"linter": "revive", "success": true}},
+	}
+	writeEvents(t, dir, events)
+
+	// Create a DB with a minimal schema that satisfies RecentSessions
+	// (SELECT hash FROM nodes WHERE parent_hash IS NULL) but causes
+	// GetSession to fail because it queries columns that don't exist
+	// (role, content, model, prompt_tokens, etc.).
+	db, err := sql.Open("sqlite", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	db.Exec(`CREATE TABLE nodes (
+		hash TEXT PRIMARY KEY,
+		parent_hash TEXT,
+		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+	)`)
+	db.Exec(`INSERT INTO nodes (hash, parent_hash) VALUES ('root1', NULL)`)
+	reader := tapes.NewReaderFromDB(db)
+
+	obs := New(dir, WithTapesReader(reader))
+	insights, err := obs.Analyze()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// enrichWithTapes continues past GetSession errors; tokens stay at zero.
+	if len(insights) == 0 {
+		t.Fatal("expected insights even with GetSession errors")
+	}
+	for _, ins := range insights {
+		if ins.TotalTokens != 0 {
+			t.Errorf("expected TotalTokens=0 when GetSession errors, got %d", ins.TotalTokens)
+		}
+	}
+}
+
 func TestEnrichWithTapesReaderError(t *testing.T) {
 	dir := t.TempDir()
 	events := []telemetry.Event{
