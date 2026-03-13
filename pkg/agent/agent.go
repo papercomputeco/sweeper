@@ -13,7 +13,7 @@ import (
 	"github.com/papercomputeco/sweeper/pkg/worker"
 )
 
-type LinterFunc func(ctx context.Context, dir string) ([]linter.Issue, error)
+type LinterFunc func(ctx context.Context, dir string) (linter.ParseResult, error)
 
 type Summary struct {
 	TotalIssues int
@@ -39,10 +39,14 @@ func WithExecutor(exec worker.Executor) Option {
 	return func(a *Agent) { a.executor = exec }
 }
 
+func defaultLinterFunc(ctx context.Context, dir string) (linter.ParseResult, error) {
+	return linter.Run(ctx, dir)
+}
+
 func New(cfg config.Config, opts ...Option) *Agent {
 	a := &Agent{
 		cfg:      cfg,
-		linterFn: linter.Run,
+		linterFn: defaultLinterFunc,
 		executor: worker.ClaudeExecutor,
 		pub:      telemetry.NewPublisher(cfg.TelemetryDir),
 	}
@@ -65,14 +69,28 @@ func (a *Agent) Run(ctx context.Context) (Summary, error) {
 	}
 
 	fmt.Println("Running linter...")
-	issues, err := a.linterFn(ctx, a.cfg.TargetDir)
+	result, err := a.linterFn(ctx, a.cfg.TargetDir)
 	if err != nil {
 		return Summary{}, fmt.Errorf("linting: %w", err)
 	}
-	if len(issues) == 0 {
-		fmt.Println("No lint issues found.")
-		return Summary{}, nil
+
+	linterName := a.cfg.LinterName
+	if linterName == "" {
+		linterName = "golangci-lint"
 	}
+
+	if result.Parsed {
+		return a.runParsed(ctx, result, linterName)
+	}
+	if result.RawOutput != "" {
+		return a.runRaw(ctx, result, linterName)
+	}
+	fmt.Println("No lint issues found.")
+	return Summary{}, nil
+}
+
+func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linterName string) (Summary, error) {
+	issues := result.Issues
 	fmt.Printf("Found %d lint issues across files.\n", len(issues))
 
 	fixTasks := planner.GroupByFile(issues)
@@ -115,6 +133,50 @@ func (a *Agent) Run(ctx context.Context) (Summary, error) {
 				"duration": r.Duration.String(),
 				"issues":   r.IssuesFix,
 				"error":    r.Error,
+				"linter":   linterName,
+			},
+		})
+	}
+
+	fmt.Printf("Results: %d fixed, %d failed out of %d tasks.\n", summary.Fixed, summary.Failed, summary.Tasks)
+	return summary, nil
+}
+
+func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterName string) (Summary, error) {
+	fmt.Println("Could not parse structured issues; passing raw output to agent.")
+
+	task := worker.Task{
+		ID:        0,
+		Dir:       a.cfg.TargetDir,
+		RawOutput: result.RawOutput,
+	}
+	task.Prompt = worker.BuildRawPrompt(task)
+
+	if a.cfg.DryRun {
+		fmt.Println("Dry run - would send raw lint output to agent for analysis.")
+		return Summary{TotalIssues: 1, Tasks: 1}, nil
+	}
+
+	pool := worker.NewPool(a.cfg.Concurrency, a.executor)
+	results := pool.Run(ctx, []worker.Task{task})
+
+	summary := Summary{TotalIssues: 1, Tasks: 1}
+	for _, r := range results {
+		if r.Success {
+			summary.Fixed++
+		} else {
+			summary.Failed++
+		}
+		a.pub.Publish(telemetry.Event{
+			Timestamp: time.Now(),
+			Type:      "fix_attempt",
+			Data: map[string]any{
+				"file":     "raw",
+				"success":  r.Success,
+				"duration": r.Duration.String(),
+				"issues":   1,
+				"error":    r.Error,
+				"linter":   linterName,
 			},
 		})
 	}

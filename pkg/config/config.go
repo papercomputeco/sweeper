@@ -6,6 +6,8 @@ type Config struct {
 	TelemetryDir string
 	DryRun       bool
 	NoTapes      bool
+	LintCommand  []string
+	LinterName   string
 }
 
 func Default() Config {

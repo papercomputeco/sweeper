@@ -1,0 +1,4 @@
+src/App.tsx:12:5: 'useState' is defined but never used (@typescript-eslint/no-unused-vars)
+src/App.tsx:34:10: Unexpected any. Specify a different type (@typescript-eslint/no-explicit-any)
+src/components/Header.tsx:8:1: Missing return type on function (@typescript-eslint/explicit-function-return-type)
+src/utils/helpers.ts:22:3: 'console' is not allowed (no-console)

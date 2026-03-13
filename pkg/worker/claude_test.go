@@ -26,3 +26,20 @@ func TestBuildPrompt(t *testing.T) {
 		t.Error("prompt should include linter names")
 	}
 }
+
+func TestBuildRawPrompt(t *testing.T) {
+	task := Task{
+		Dir:       "/tmp/project",
+		RawOutput: "ERROR: something went wrong\n  --> src/lib.rs:45\n",
+	}
+	prompt := BuildRawPrompt(task)
+	if !strings.Contains(prompt, "ERROR: something went wrong") {
+		t.Error("raw prompt should contain the original output")
+	}
+	if !strings.Contains(prompt, "Analyze it") {
+		t.Error("raw prompt should instruct the agent to analyze")
+	}
+	if !strings.Contains(prompt, "Commit nothing") {
+		t.Error("raw prompt should instruct not to commit")
+	}
+}

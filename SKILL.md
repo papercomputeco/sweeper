@@ -1,12 +1,14 @@
 # Sweeper Agent Skill
 
-You are operating the **sweeper** tool, an AI-powered lint fixer that dispatches parallel Claude Code sub-agents to fix golangci-lint issues.
+You are operating the **sweeper** tool, an AI-powered lint fixer that dispatches parallel Claude Code sub-agents to fix lint issues from any linter.
 
 ## Quick Start
 
 ```bash
 cd /path/to/target/project
-sweeper run
+sweeper run                              # default: golangci-lint
+sweeper run -- npm run lint              # arbitrary command
+npm run lint | sweeper run               # piped stdin
 ```
 
 ## Commands
@@ -15,10 +17,16 @@ sweeper run
 
 Runs the full lint-fix loop:
 
-1. Executes `golangci-lint run --out-format=line-number ./...` on the target directory
-2. Parses issues and groups them by file
-3. Dispatches parallel Claude Code sub-agents (default: 3) to fix each file
-4. Records outcomes to `.sweeper/telemetry/`
+1. Executes a lint command (default: `golangci-lint run --out-format=line-number ./...`)
+2. Parses output using multi-format detection (golangci-lint, generic `file:line:col`, minimal `file:line`, or raw fallback)
+3. Groups structured issues by file into parallel fix tasks
+4. Dispatches parallel Claude Code sub-agents (default: 3) to fix each file
+5. Records outcomes to `.sweeper/telemetry/`
+
+**Input modes:**
+- `sweeper run` - Default: runs golangci-lint
+- `sweeper run -- <command>` - Run an arbitrary lint command (e.g., `npm run lint`, `cargo clippy`)
+- `<command> | sweeper run` - Pipe existing lint output via stdin
 
 **Flags:**
 - `--target, -t <dir>` - Directory to lint and fix (default: `.`)
@@ -28,14 +36,24 @@ Runs the full lint-fix loop:
 
 **Example runs:**
 ```bash
-# Fix current directory
+# Fix current directory with golangci-lint (default)
 sweeper run
 
 # Fix a specific project with 5 agents
 sweeper run -t /path/to/project -c 5
 
+# Use ESLint
+sweeper run -- npx eslint --format unix .
+
+# Use cargo clippy
+sweeper run -- cargo clippy 2>&1
+
+# Pipe existing lint output
+cat lint-results.txt | sweeper run
+
 # Preview fixes
 sweeper run --dry-run
+sweeper run --dry-run -- npm run lint
 ```
 
 **Exit codes:**
@@ -61,9 +79,11 @@ Prints the current version.
 
 Before running sweeper, ensure these are available:
 
-1. **golangci-lint** - Must be in PATH. Install: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
-2. **claude** - Claude Code CLI must be in PATH. The tool invokes `claude --print --dangerously-skip-permissions <prompt>` for each fix task.
+1. **claude** - Claude Code CLI must be in PATH. The tool invokes `claude --print --dangerously-skip-permissions <prompt>` for each fix task.
+2. **golangci-lint** (only for default mode) - Must be in PATH. Install: `go install github.com/golangci/golangci-lint/cmd/golangci-lint@latest`
 3. **tapes** (optional) - If `~/.tapes/tapes.db` exists, sweeper tracks token usage per session.
+
+When using `-- <command>` or piped input, golangci-lint is not required.
 
 ## Building from Source
 
@@ -76,7 +96,9 @@ The binary has no CGO dependencies (uses pure-Go SQLite) and cross-compiles clea
 
 ## How It Works
 
-Each sub-agent receives a prompt like:
+### Structured output (parsed)
+
+When lint output matches a recognized format (`file:line:col: message`), each sub-agent receives a focused prompt for a single file:
 
 ```
 Fix the following lint issues in path/to/file.go:
@@ -87,18 +109,32 @@ Fix the following lint issues in path/to/file.go:
 Fix each issue. Do not change behavior. Only fix lint issues. Commit nothing.
 ```
 
-The agent fixes only the listed issues in that file. Multiple agents run concurrently across different files.
+Multiple agents run concurrently across different files.
+
+### Raw output (fallback)
+
+When output cannot be parsed into structured issues, the full output is sent to a single agent for analysis:
+
+```
+The following lint output was produced. Analyze it, identify the issues, and fix them:
+
+<full lint output>
+
+Fix each issue you can identify. Do not change behavior. Only fix lint issues. Commit nothing.
+```
 
 ## Telemetry
 
-Results are stored in `.sweeper/telemetry/YYYY-MM-DD.jsonl` relative to the target directory. Each line records: timestamp, file, success/failure, duration, issue count, and any error message.
+Results are stored in `.sweeper/telemetry/YYYY-MM-DD.jsonl` relative to the target directory. Each line records: timestamp, file, success/failure, duration, issue count, linter name, and any error message.
 
 Use `sweeper observe` to analyze this data.
 
 ## Troubleshooting
 
-- **"golangci-lint: command not found"** - Install golangci-lint or add it to PATH
+- **"golangci-lint: command not found"** - Install golangci-lint or use `-- <command>` to specify a different linter
 - **"claude: command not found"** - Install Claude Code CLI or add it to PATH
+- **"cannot use both piped input and -- command"** - Choose one input method: pipe or `--`
 - **"No lint issues found"** - The target codebase is clean; nothing to fix
+- **Custom command produces no parseable output** - Sweeper falls back to raw mode; the agent will analyze the full output
 - **Tapes warning** - Tapes is optional; use `--no-tapes` to suppress the warning
 - **Tasks failing** - Check the sub-agent output in the telemetry JSONL for error details

@@ -1,0 +1,16 @@
+ERROR: Compilation failed with 3 errors
+
+  --> src/lib.rs:45
+   |
+45 |     let x: String = 42;
+   |                     ^^ expected `String`, found integer
+
+  --> src/lib.rs:60
+   |
+60 |     foo.bar()
+   |         ^^^ method not found in `Foo`
+
+  --> src/main.rs:12
+   |
+12 |     unused_variable;
+   |     ^^^^^^^^^^^^^^^ unused variable

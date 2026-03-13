@@ -1,0 +1,4 @@
+app/main.py:15:0: C0114: Missing module docstring (missing-module-docstring)
+app/main.py:22:4: W0612: Unused variable 'result' (unused-variable)
+app/views.py:8:0: E0401: Unable to import 'django.shortcuts' (import-error)
+app/models.py:30:8: R1705: Unnecessary "else" after "return", remove the "else" and de-indent the code inside it (no-else-return)
