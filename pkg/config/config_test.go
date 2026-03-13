@@ -32,3 +32,16 @@ func TestDefaultStaleThreshold(t *testing.T) {
 		t.Errorf("expected default StaleThreshold 2, got %d", cfg.StaleThreshold)
 	}
 }
+
+func TestDefaultConfigHasVMDisabled(t *testing.T) {
+	cfg := Default()
+	if cfg.VM {
+		t.Error("VM should be disabled by default")
+	}
+	if cfg.VMName != "" {
+		t.Error("VMName should be empty by default")
+	}
+	if cfg.VMJcard != "" {
+		t.Error("VMJcard should be empty by default")
+	}
+}
