@@ -1,7 +1,6 @@
 package tapes
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -54,8 +53,8 @@ func CheckInstallation(dbPath string) Status {
 
 	return Status{
 		Available: false,
-		Message: fmt.Sprintf("tapes is not installed. Install it to track sub-agent sessions:\n" +
+		Message: "tapes is not installed. Install it to track sub-agent sessions:\n" +
 			"  go install github.com/papercomputeco/tapes/cli/tapes@latest\n" +
-			"  tapes init\n"),
+			"  tapes init\n",
 	}
 }

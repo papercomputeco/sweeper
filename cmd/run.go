@@ -3,10 +3,10 @@ package cmd
 import (
 	"context"
 	"fmt"
-	"os"
 	"github.com/papercomputeco/sweeper/pkg/agent"
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/spf13/cobra"
+	"os"
 )
 
 func newRunCmd() *cobra.Command {
