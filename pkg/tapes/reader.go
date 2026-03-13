@@ -3,6 +3,7 @@ package tapes
 import (
 	"database/sql"
 	"encoding/json"
+	"fmt"
 	"time"
 
 	_ "modernc.org/sqlite"
@@ -43,6 +44,10 @@ func NewReader(dbPath string) (*Reader, error) {
 	db, err := sql.Open("sqlite", dbPath+"?mode=ro")
 	if err != nil {
 		return nil, err
+	}
+	if err := db.Ping(); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("opening tapes database %s: %w", dbPath, err)
 	}
 	return &Reader{db: db}, nil
 }
