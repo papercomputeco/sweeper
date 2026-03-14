@@ -1,4 +1,4 @@
-# Sweeper Agent
+# 🧹 Sweeper Agent
 
 Multi-threaded code maintenance with resource-isolated sub-agents.
 
