@@ -15,12 +15,12 @@ import (
 
 func writeEvents(t *testing.T, dir string, events []telemetry.Event) {
 	t.Helper()
-	os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o755)
 	f, _ := os.Create(filepath.Join(dir, "2026-03-13.jsonl"))
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	for _, e := range events {
 		data, _ := json.Marshal(e)
-		f.Write(append(data, '\n'))
+		_, _ = f.Write(append(data, '\n'))
 	}
 }
 
@@ -250,9 +250,9 @@ func TestReadFileBadJSON(t *testing.T) {
 	dir := t.TempDir()
 	// Write a file with invalid JSON lines.
 	f, _ := os.Create(filepath.Join(dir, "bad.jsonl"))
-	f.WriteString("not valid json\n")
-	f.WriteString(`{"timestamp":"2026-03-13T00:00:00Z","type":"fix_attempt","data":{"linter":"revive","success":true}}` + "\n")
-	f.Close()
+	_, _ = f.WriteString("not valid json\n")
+	_, _ = f.WriteString(`{"timestamp":"2026-03-13T00:00:00Z","type":"fix_attempt","data":{"linter":"revive","success":true}}` + "\n")
+	_ = f.Close()
 	obs := New(dir)
 	insights, err := obs.Analyze()
 	if err != nil {
@@ -268,9 +268,9 @@ func TestReadFileOpenError(t *testing.T) {
 	dir := t.TempDir()
 	// Create a .jsonl file that cannot be read.
 	path := filepath.Join(dir, "unreadable.jsonl")
-	os.WriteFile(path, []byte("data"), 0o644)
-	os.Chmod(path, 0o000)
-	t.Cleanup(func() { os.Chmod(path, 0o644) })
+	_ = os.WriteFile(path, []byte("data"), 0o644)
+	_ = os.Chmod(path, 0o000)
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
 
 	obs := New(dir)
 	_, err := obs.Analyze()
@@ -358,7 +358,7 @@ func TestAnalyzeHistoryWithRounds(t *testing.T) {
 
 func TestAnalyzeHistoryMultipleRuns(t *testing.T) {
 	dir := t.TempDir()
-	os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o755)
 	// Write two date files to simulate two runs
 	ts1 := time.Date(2026, 3, 12, 10, 0, 0, 0, time.UTC)
 	ts2 := time.Date(2026, 3, 13, 10, 0, 0, 0, time.UTC)
@@ -366,14 +366,14 @@ func TestAnalyzeHistoryMultipleRuns(t *testing.T) {
 	f1, _ := os.Create(filepath.Join(dir, "2026-03-12.jsonl"))
 	e1 := telemetry.Event{Timestamp: ts1, Type: "fix_attempt", Data: map[string]any{"success": false}}
 	data1, _ := json.Marshal(e1)
-	f1.Write(append(data1, '\n'))
-	f1.Close()
+	_, _ = f1.Write(append(data1, '\n'))
+	_ = f1.Close()
 
 	f2, _ := os.Create(filepath.Join(dir, "2026-03-13.jsonl"))
 	e2 := telemetry.Event{Timestamp: ts2, Type: "fix_attempt", Data: map[string]any{"success": true}}
 	data2, _ := json.Marshal(e2)
-	f2.Write(append(data2, '\n'))
-	f2.Close()
+	_, _ = f2.Write(append(data2, '\n'))
+	_ = f2.Close()
 
 	obs := New(dir)
 	hist, err := obs.AnalyzeHistory()
@@ -428,9 +428,9 @@ func TestAnalyzeHistorySkipsNonFixEvents(t *testing.T) {
 func TestAnalyzeHistoryReadError(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "unreadable.jsonl")
-	os.WriteFile(path, []byte("data"), 0o644)
-	os.Chmod(path, 0o000)
-	t.Cleanup(func() { os.Chmod(path, 0o644) })
+	_ = os.WriteFile(path, []byte("data"), 0o644)
+	_ = os.Chmod(path, 0o000)
+	t.Cleanup(func() { _ = os.Chmod(path, 0o644) })
 
 	obs := New(dir)
 	_, err := obs.AnalyzeHistory()
@@ -476,13 +476,13 @@ func TestEnrichWithTapesGetSessionError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	db.Exec(`CREATE TABLE nodes (
+	defer func() { _ = db.Close() }()
+	_, _ = db.Exec(`CREATE TABLE nodes (
 		hash TEXT PRIMARY KEY,
 		parent_hash TEXT,
 		created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 	)`)
-	db.Exec(`INSERT INTO nodes (hash, parent_hash) VALUES ('root1', NULL)`)
+	_, _ = db.Exec(`INSERT INTO nodes (hash, parent_hash) VALUES ('root1', NULL)`)
 	reader := tapes.NewReaderFromDB(db)
 
 	obs := New(dir, WithTapesReader(reader))
@@ -513,13 +513,13 @@ func TestEnrichWithTapesReaderError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.Exec(`CREATE TABLE nodes (hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, content JSON,
+	_, _ = db.Exec(`CREATE TABLE nodes (hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, content JSON,
 		model TEXT, provider TEXT, agent_name TEXT, prompt_tokens INTEGER,
 		completion_tokens INTEGER, total_tokens INTEGER,
 		cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER,
 		project TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
 	reader := tapes.NewReaderFromDB(db)
-	db.Close() // Close to force errors
+	_ = db.Close() // Close to force errors
 
 	obs := New(dir, WithTapesReader(reader))
 	insights, err := obs.Analyze()

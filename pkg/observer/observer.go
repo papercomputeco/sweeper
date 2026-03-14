@@ -115,7 +115,7 @@ func (o *Observer) readFile(path string) ([]telemetry.Event, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	var events []telemetry.Event
 	scanner := bufio.NewScanner(f)
 	for scanner.Scan() {

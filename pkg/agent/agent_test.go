@@ -241,8 +241,12 @@ func TestAgentRunTapesAvailable(t *testing.T) {
 	// Create a fake tapes DB in the target dir to cover the "Tapes: using" branch.
 	dir := t.TempDir()
 	tapesDir := dir + "/.tapes"
-	os.MkdirAll(tapesDir, 0o755)
-	os.WriteFile(tapesDir+"/tapes.db", []byte("fake"), 0o644)
+	if err := os.MkdirAll(tapesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tapesDir+"/tapes.db", []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.Config{
 		TargetDir:    dir,
@@ -685,6 +689,49 @@ func TestAgentWithVMContextCancel(t *testing.T) {
 	_, _ = a.Run(ctx) // May return error from cancelled context
 	if !shutdownCalled {
 		t.Error("VM.Shutdown() should fire on context cancellation")
+	}
+}
+
+func TestAgentRunWithCustomLintCommand(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+		LintCommand:  []string{"eslint", "--fix", "."},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentRunSessionDocError(t *testing.T) {
+	// Use a target dir that is a file (not a directory) so .sweeper creation fails.
+	tmp := t.TempDir()
+	blocker := tmp + "/.sweeper"
+	if err := os.WriteFile(blocker, []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
+
+	cfg := config.Config{
+		TargetDir:    tmp,
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	// Should not fail, just warn
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
 	}
 }
 

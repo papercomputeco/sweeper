@@ -40,5 +40,5 @@ func GenerateJcard(dir, name, hostProjectDir string) (string, error) {
 
 // CleanupJcard removes the jcard file. Safe to call on nonexistent paths.
 func CleanupJcard(path string) {
-	os.Remove(path)
+	_ = os.Remove(path)
 }

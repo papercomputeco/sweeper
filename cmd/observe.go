@@ -20,7 +20,7 @@ func newObserveCmd() *cobra.Command {
 				if dbPath != "" {
 					reader, err := tapes.NewReader(dbPath)
 					if err == nil {
-						defer reader.Close()
+						defer func() { _ = reader.Close() }()
 						opts = append(opts, observer.WithTapesReader(reader))
 					}
 				}

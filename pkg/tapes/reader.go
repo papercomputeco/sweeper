@@ -46,7 +46,7 @@ func NewReader(dbPath string) (*Reader, error) {
 		return nil, err
 	}
 	if err := db.Ping(); err != nil {
-		db.Close()
+		_ = db.Close()
 		return nil, fmt.Errorf("opening tapes database %s: %w", dbPath, err)
 	}
 	return &Reader{db: db}, nil
@@ -67,7 +67,7 @@ func (r *Reader) ListSessions() ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []string
 	for rows.Next() {
@@ -87,7 +87,7 @@ func (r *Reader) RecentSessions(n int) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var sessions []string
 	for rows.Next() {
@@ -116,7 +116,7 @@ func (r *Reader) GetSession(rootHash string) (Session, error) {
 	if err != nil {
 		return Session{RootHash: rootHash}, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var session Session
 	session.RootHash = rootHash
