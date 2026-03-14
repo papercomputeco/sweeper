@@ -135,9 +135,9 @@ Every sub-agent session is recorded in [tapes](https://github.com/papercomputeco
 
 Run `sweeper observe` after each sweep to see insights and tune your next run.
 
-## VM Isolation
+## stereOS: Resource Isolation
 
-Use `--vm` to run sub-agents inside ephemeral stereOS virtual machines. This is what makes high concurrency safe.
+Sub-agents can run inside ephemeral [stereOS](https://stereos.ai) virtual machines, managed by the `mb` (Masterblaster) CLI. This is what makes high concurrency safe.
 
 Without VMs, sub-agents share the host process, filesystem, and API keys. At low concurrency (5 or fewer) this works fine. At higher concurrency, you want each agent isolated so a runaway process or leaked credential stays contained.
 
