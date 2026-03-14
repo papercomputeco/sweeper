@@ -1,0 +1,45 @@
+name: Cut Release
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  create-release:
+    name: Cut New GitHub Release
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Create GitHub App token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ secrets.PAPER_COMPUTE_CO_BOT_APP_ID }}
+          private-key: ${{ secrets.PAPER_COMPUTE_CO_BOT_PRIVATE_KEY }}
+
+      - name: Determine next version
+        id: version
+        run: |
+          latest=$(gh release list --limit 1 --json tagName -q '.[0].tagName' 2>/dev/null || echo "")
+          if [ -z "$latest" ]; then
+            echo "tag=v0.1.0" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=$latest" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Create release
+        run: |
+          gh release create "${{ steps.version.outputs.tag }}" \
+            --generate-notes \
+            --title "${{ steps.version.outputs.tag }}"
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}

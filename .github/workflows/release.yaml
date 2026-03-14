@@ -1,0 +1,45 @@
+name: Release
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Build binaries
+        run: |
+          mkdir -p build/darwin/arm64 build/darwin/amd64 build/linux/amd64 build/linux/arm64
+          GOOS=darwin  GOARCH=arm64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o build/darwin/arm64/sweeper .
+          GOOS=darwin  GOARCH=amd64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o build/darwin/amd64/sweeper .
+          GOOS=linux   GOARCH=amd64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o build/linux/amd64/sweeper .
+          GOOS=linux   GOARCH=arm64 go build -ldflags "-X main.version=${{ github.event.release.tag_name }}" -o build/linux/arm64/sweeper .
+
+      - name: Upload artifacts to release
+        run: |
+          mkdir -p dist
+          for file in $(find build -type f); do
+            rel_path="${file#build/}"
+            os=$(dirname "$rel_path" | cut -d'/' -f1)
+            arch=$(dirname "$rel_path" | cut -d'/' -f2)
+            filename=$(basename "$file")
+            new_name="${filename}-${os}-${arch}"
+            cp "$file" "dist/$new_name"
+          done
+
+          gh release upload "${{ github.event.release.tag_name }}" dist/*
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
