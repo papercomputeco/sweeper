@@ -34,6 +34,29 @@ Sweeper dispatches parallel Claude Code agents to fix lint issues across your co
 
 Each sub-agent works on a single file. Results stream back as they complete, giving real-time progress instead of blocking until the entire round finishes.
 
+## Why Sub-Agents
+
+The main thread never reads or edits source files. It runs the linter, builds prompts, dispatches work, and collects results. All file-level reasoning happens inside sub-agents via `claude --print`, which are stateless, single-shot processes.
+
+This matters because the orchestrator's context window stays small and predictable. It holds lint output, task metadata, and result summaries, not the contents of every file being fixed. A run that touches 50 files uses roughly the same orchestrator context as one that touches 5. The complexity scales in parallelism, not in context size.
+
+```
+  Orchestrator (main thread)              Sub-agents (disposable)
+  ┌────────────────────────┐
+  │ lint output            │              ┌──────────────────────┐
+  │ file groupings         │  ──dispatch──▶ claude --print       │
+  │ strategy decisions     │              │  reads auth.go       │
+  │ result summaries       │  ◀──result── │  writes fix          │
+  │                        │              └──────────────────────┘
+  │ (never sees file       │              ┌──────────────────────┐
+  │  contents directly)    │  ──dispatch──▶ claude --print       │
+  │                        │              │  reads router.go     │
+  │                        │  ◀──result── │  writes fix          │
+  └────────────────────────┘              └──────────────────────┘
+```
+
+Sub-agents are fire-and-forget. Each one gets a prompt with the lint issues for its file, does the work, and exits. If it fails, the orchestrator knows from the exit code and can retry with an escalated strategy on the next round. No conversation state carries over between rounds, which keeps each attempt clean.
+
 ## Setup
 
 ### Claude Code
