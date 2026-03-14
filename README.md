@@ -1,8 +1,38 @@
-# 🧹 Sweeper Agent
+# Sweeper Agent
 
-Agent-powered code maintenance tool that automates lint fixes through parallel Claude Code sub-agents.
+Multi-threaded code maintenance with resource-isolated sub-agents.
 
-Sweeper runs your linter, groups issues by file, dispatches concurrent Claude Code agents to fix them, and records outcomes so it can learn from past runs. Inspired by [autoresearch](https://github.com/karpathy/autoresearch), it follows a read-decide-act-observe loop with RL-style prompt escalation and stagnation detection.
+Sweeper dispatches parallel Claude Code agents to fix lint issues across your codebase, each running in its own isolated environment. It groups issues by file, fans out concurrent fixes, escalates strategy when fixes stall, and records outcomes so it learns what works. With VM isolation enabled, each sub-agent runs inside a dedicated stereOS virtual machine with its own CPU, memory, and secrets boundary, safe to scale to 10+ concurrent agents.
+
+```
+                        sweeper run --vm -c 10
+                              │
+                    ┌─────────┼─────────┐
+                    ▼         ▼         ▼
+              ┌──────────────────────────────┐
+              │        Worker Pool           │
+              │   (semaphore-bounded, N=10)  │
+              └──┬───┬───┬───┬───┬───┬──────┘
+                 │   │   │   │   │   │
+                 ▼   ▼   ▼   ▼   ▼   ▼
+               ┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐
+               │VM ││VM ││VM ││VM ││VM ││VM │  ◄── stereOS isolation
+               │ 1 ││ 2 ││ 3 ││ 4 ││ 5 ││...│      (secrets, CPU, memory)
+               └─┬─┘└─┬─┘└─┬─┘└─┬─┘└─┬─┘└─┬─┘
+                 │     │     │     │     │     │
+                 ▼     ▼     ▼     ▼     ▼     ▼
+              claude  claude claude claude claude claude
+              --print --print --print --print --print --print
+                 │     │     │     │     │     │
+                 └─────┴─────┴──┬──┴─────┴─────┘
+                                │
+                    ┌───────────┼───────────┐
+                    ▼           ▼           ▼
+               streaming    telemetry    tapes
+               progress     (.jsonl)    (SQLite)
+```
+
+Each sub-agent works on a single file. Results stream back as they complete, giving real-time progress instead of blocking until the entire round finishes.
 
 ## Setup
 
@@ -63,32 +93,41 @@ sweeper observe                          # review success rates + token spend
 
 ## How It Works
 
-1. **Lint** — run any linter, parse structured output
-2. **Dispatch** — parallel Claude Code sub-agents fix each file concurrently
-3. **Retry** — escalate strategy: standard -> retry -> exploration
-4. **Record** — outcomes logged to `.sweeper/telemetry/` + tapes captures token usage
-5. **Learn** — `sweeper observe` shows what works, what costs too much, what to tune
-6. **Isolate** — optional stereOS VM for secrets, resources, and nesting safety
+1. **Lint**: run any linter, parse structured output (or fall back to raw mode)
+2. **Plan**: group issues by file, pick strategy per file based on history
+3. **Dispatch**: fan out to N concurrent sub-agents (default 5, up to 10+ with VMs)
+4. **Stream**: results arrive in real time as each file completes
+5. **Escalate**: stalled files get retry prompts, then exploration prompts that consider surrounding code
+6. **Record**: outcomes logged to `.sweeper/telemetry/` and tapes captures token usage
+7. **Learn**: `sweeper observe` shows success rates by strategy, round, and linter
 
-## Tapes — The Learning Center
+## Tapes: The Learning Center
 
 Every sub-agent session is recorded in [tapes](https://github.com/papercomputeco/tapes). This gives you:
 
-- **Token spend per linter** — know what each fix costs
-- **Strategy effectiveness** — standard vs retry vs exploration success rates
-- **Round effectiveness** — which retry rounds contribute most fixes
-- **Trend tracking** — are you fixing more issues with fewer tokens over time?
+- **Token spend per linter**: know what each fix costs
+- **Strategy effectiveness**: standard vs retry vs exploration success rates
+- **Round effectiveness**: which retry rounds contribute most fixes
+- **Trend tracking**: are you fixing more issues with fewer tokens over time?
 
 Run `sweeper observe` after each sweep to see insights and tune your next run.
 
 ## VM Isolation
 
-Use `--vm` to run sub-agents inside a stereOS virtual machine:
+Use `--vm` to run sub-agents inside ephemeral stereOS virtual machines. This is what makes high concurrency safe.
 
-- **Secret isolation** — API keys stay in the VM
-- **Resource isolation** — dedicated CPU/memory
-- **No nesting conflicts** — works inside Claude Code sessions
-- **Clean teardown** — ephemeral VMs destroyed on exit
+Without VMs, sub-agents share the host process, filesystem, and API keys. At low concurrency (5 or fewer) this works fine. At higher concurrency, you want each agent isolated so a runaway process or leaked credential stays contained.
+
+With `--vm`, each sub-agent gets:
+
+- **Own CPU and memory**: 4 cores, 8GB RAM per VM (configurable). No resource contention between agents.
+- **Secret boundary**: `ANTHROPIC_API_KEY` is injected into the VM and never touches the host filesystem.
+- **Nesting safety**: `claude --print` fails inside active Claude Code sessions due to nesting detection. VMs sidestep this entirely.
+- **Clean teardown**: VMs are ephemeral. On exit (success, failure, or SIGINT), the VM is destroyed automatically.
+
+```bash
+sweeper run --vm -c 10 --max-rounds 3    # 10 isolated agents, 3 retry rounds
+```
 
 ## Session State
 

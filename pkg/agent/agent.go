@@ -295,7 +295,13 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 
 func (a *Agent) runRound(ctx context.Context, tasks []worker.Task) []worker.Result {
 	pool := worker.NewPool(a.cfg.Concurrency, a.executor)
-	return pool.Run(ctx, tasks)
+	ch := pool.RunStream(ctx, tasks)
+	results := make([]worker.Result, 0, len(tasks))
+	for r := range ch {
+		fmt.Printf("  completed: %s (success=%t)\n", r.File, r.Success)
+		results = append(results, r)
+	}
+	return results
 }
 
 func (a *Agent) publishFixAttempt(r worker.Result, linterName string, round int, strategy loop.Strategy) {
