@@ -1,4 +1,5 @@
 /sweeper
+sweeper.md
 .sweeper/
 .claude/
 *.jsonl
