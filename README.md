@@ -59,9 +59,21 @@ Sub-agents are fire-and-forget. Each one gets a prompt with the lint issues for 
 
 ## Setup
 
+### Go CLI (standalone)
+
+The core binary. All integrations below (except Pi) require this.
+
+```bash
+go install github.com/papercomputeco/sweeper@latest
+sweeper run                              # default: golangci-lint
+sweeper run --vm -c 5 --max-rounds 3    # VM isolation, 5 agents, 3 rounds
+sweeper run -- npm run lint              # any linter
+sweeper observe                          # review success rates + token spend
+```
+
 ### Claude Code
 
-To use sweeper as a skill in Claude Code:
+To use sweeper as a skill in [Claude Code](https://docs.anthropic.com/en/docs/claude-code):
 
 1. Build the binary:
 ```bash
@@ -80,7 +92,7 @@ Claude will orchestrate `sweeper run` with the right flags based on your project
 
 ### opencode
 
-To use sweeper as a skill in opencode:
+To use sweeper as a skill in [opencode](https://opencode.ai) (a terminal-based AI coding agent):
 
 1. Build the binary:
 ```bash
@@ -94,27 +106,21 @@ mkdir -p /path/to/your-project/.opencode/agents/
 cp skills/sweeper/SKILL.md /path/to/your-project/.opencode/agents/sweeper.md
 ```
 
-3. Use the sweeper agent in opencode to run lint-fix loops.
+3. Tell opencode: "Run sweeper on this project"
 
 ### Pi
+
+[Pi](https://github.com/anthropics/pi) is a Claude-native IDE extension. Its sweeper integration reimplements the linting and telemetry loop in TypeScript using Pi's own tool system, so it does **not** need the Go binary.
 
 ```bash
 pi install sweeper
 ```
 
-Provides `init_sweep`, `run_linter`, and `log_result` tools plus a dashboard widget.
-
-### Go CLI (standalone)
-
-```bash
-go install github.com/papercomputeco/sweeper@latest
-sweeper run                              # default: golangci-lint
-sweeper run --vm -c 5 --max-rounds 3    # VM isolation, 5 agents, 3 rounds
-sweeper run -- npm run lint              # any linter
-sweeper observe                          # review success rates + token spend
-```
+This gives you `init_sweep`, `run_linter`, and `log_result` tools plus a dashboard widget. To start a sweep, tell Pi: "Sweep this project for lint issues"
 
 ## How It Works
+
+This describes the Go CLI and skill-based integrations (Claude Code, opencode). Pi manages its own lint-fix loop through built-in tools and does not use the CLI.
 
 1. **Lint**: run any linter, parse structured output (or fall back to raw mode)
 2. **Plan**: group issues by file, pick strategy per file based on history
