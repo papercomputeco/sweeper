@@ -3,12 +3,15 @@ package agent
 import (
 	"context"
 	"fmt"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
 	"github.com/papercomputeco/sweeper/pkg/loop"
 	"github.com/papercomputeco/sweeper/pkg/planner"
+	"github.com/papercomputeco/sweeper/pkg/session"
 	"github.com/papercomputeco/sweeper/pkg/tapes"
 	"github.com/papercomputeco/sweeper/pkg/telemetry"
 	"github.com/papercomputeco/sweeper/pkg/worker"
@@ -30,11 +33,12 @@ type Summary struct {
 }
 
 type Agent struct {
-	cfg      config.Config
-	linterFn LinterFunc
-	executor worker.Executor
-	pub      *telemetry.Publisher
-	vm       VMManager
+	cfg         config.Config
+	linterFn    LinterFunc
+	executor    worker.Executor
+	pub         *telemetry.Publisher
+	vm          VMManager
+	sessionPath string
 }
 
 type Option func(*Agent)
@@ -82,6 +86,36 @@ func (a *Agent) Run(ctx context.Context) (Summary, error) {
 			fmt.Printf("Warning: %s\n", status.Message)
 		}
 	}
+
+	lintCmd := "golangci-lint run ./..."
+	if len(a.cfg.LintCommand) > 0 {
+		lintCmd = strings.Join(a.cfg.LintCommand, " ")
+	}
+	sessionCfg := session.Config{
+		Objective:   "Fix lint issues",
+		LintCommand: lintCmd,
+		TargetDir:   a.cfg.TargetDir,
+		MaxRounds:   a.cfg.MaxRounds,
+	}
+	sp, err := session.Generate(filepath.Join(a.cfg.TargetDir, ".sweeper"), sessionCfg)
+	if err != nil {
+		fmt.Printf("Warning: session doc: %v\n", err)
+	} else {
+		a.sessionPath = sp
+		fmt.Printf("Session: %s\n", sp)
+	}
+
+	a.pub.Publish(telemetry.Event{
+		Timestamp: time.Now(),
+		Type:      "init",
+		Data: map[string]any{
+			"name":           fmt.Sprintf("sweep-%s", time.Now().Format("2006-01-02")),
+			"linterCommand":  sessionCfg.LintCommand,
+			"targetDir":      a.cfg.TargetDir,
+			"maxRounds":      a.cfg.MaxRounds,
+			"staleThreshold": a.cfg.StaleThreshold,
+		},
+	})
 
 	fmt.Println("Running linter...")
 	result, err := a.linterFn(ctx, a.cfg.TargetDir)
@@ -241,11 +275,18 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 
 		if !reResult.Parsed || len(reResult.Issues) == 0 {
 			fmt.Println("All issues resolved!")
+			if a.sessionPath != "" {
+				session.UpdateStatus(a.sessionPath, round+1, len(reResult.Issues), summary.Fixed, 0)
+			}
 			break
 		}
 
 		// Filter to retryable issues
 		issues = filterRetryableIssues(reResult.Issues, fileHistories, explorationAttempted, a.cfg.StaleThreshold)
+
+		if a.sessionPath != "" {
+			session.UpdateStatus(a.sessionPath, round+1, len(reResult.Issues), summary.Fixed, len(issues))
+		}
 	}
 
 	fmt.Printf("Results: %d fixed, %d failed (%d rounds).\n", summary.Fixed, summary.Failed, summary.Rounds)

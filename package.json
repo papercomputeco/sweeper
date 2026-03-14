@@ -1,0 +1,14 @@
+{
+  "name": "sweeper",
+  "version": "1.0.0",
+  "description": "Autonomous lint-fix loop — run linters, fix issues with parallel sub-agents, retry with escalation, learn from outcomes via tapes.",
+  "license": "MIT",
+  "keywords": ["pi-package"],
+  "extensions": "./extensions",
+  "skills": "./skills",
+  "peerDependencies": {
+    "@mariozechner/pi-ai": "*",
+    "@mariozechner/pi-coding-agent": "*",
+    "@sinclair/typebox": "*"
+  }
+}

@@ -688,6 +688,47 @@ func TestAgentWithVMContextCancel(t *testing.T) {
 	}
 }
 
+func TestAgentRunWithCustomLintCommand(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+		LintCommand:  []string{"eslint", "--fix", "."},
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestAgentRunSessionDocError(t *testing.T) {
+	// Use a target dir that is a file (not a directory) so .sweeper creation fails.
+	tmp := t.TempDir()
+	blocker := tmp + "/.sweeper"
+	os.WriteFile(blocker, []byte("x"), 0o444)
+
+	cfg := config.Config{
+		TargetDir:    tmp,
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter))
+	// Should not fail, just warn
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func contains(s, substr string) bool {
 	return len(s) >= len(substr) && searchString(s, substr)
 }
