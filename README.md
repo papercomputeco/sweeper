@@ -90,6 +90,8 @@ cp -r skills/sweeper/ /path/to/your-project/.claude/skills/sweeper/
 
 Claude will orchestrate `sweeper run` with the right flags based on your project.
 
+> **Plugin support:** This repo includes a `.claude-plugin/` manifest for distribution as a Claude Code plugin, but it is not yet published to the plugin marketplace. If there is community interest, we are happy to submit it.
+
 ### opencode
 
 To use sweeper as a skill in [opencode](https://opencode.ai) (a terminal-based AI coding agent):
