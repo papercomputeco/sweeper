@@ -24,8 +24,9 @@ jobs:
       - name: Check conventional commit title
         run: |
           title="${{ github.event.pull_request.title }}"
-          if ! echo "$title" | grep -qE '^(feat|fix|docs|chore|ci|refactor|test|perf|build|style|revert)(\(.+\))?!?: .+'; then
-            echo "::error::PR title must follow conventional commits: type(scope): description"
+          if ! echo "$title" | grep -qP '^(\p{So} )?(feat|fix|docs|chore|ci|refactor|test|perf|build|style|revert)(\(.+\))?!?: .+'; then
+            echo "::error::PR title must follow: [emoji] type: description"
             echo "Valid types: feat, fix, docs, chore, ci, refactor, test, perf, build, style, revert"
+            echo "Examples: '✨ feat: Add new feature' or 'fix: Correct bug'"
             exit 1
           fi
