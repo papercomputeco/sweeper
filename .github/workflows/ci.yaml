@@ -1,0 +1,100 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+
+      - name: Run tests
+        run: go test ./...
+
+      - name: Build binaries
+        run: |
+          mkdir -p build/darwin/arm64 build/darwin/amd64 build/linux/amd64 build/linux/arm64
+          GOOS=darwin  GOARCH=arm64 go build -o build/darwin/arm64/sweeper .
+          GOOS=darwin  GOARCH=amd64 go build -o build/darwin/amd64/sweeper .
+          GOOS=linux   GOARCH=amd64 go build -o build/linux/amd64/sweeper .
+          GOOS=linux   GOARCH=arm64 go build -o build/linux/arm64/sweeper .
+
+      - name: Upload darwin arm64 binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-arm64-binaries
+          path: build/darwin/arm64/
+          retention-days: 1
+
+      - name: Upload darwin amd64 binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: darwin-amd64-binaries
+          path: build/darwin/amd64/
+          retention-days: 1
+
+      - name: Upload linux amd64 binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-amd64-binaries
+          path: build/linux/amd64/
+          retention-days: 1
+
+      - name: Upload linux arm64 binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-arm64-binaries
+          path: build/linux/arm64/
+          retention-days: 1
+
+  smoke:
+    name: Smoke Test (${{ matrix.os }})
+    needs: build
+    runs-on: ${{ matrix.runner }}
+
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macOS 15 (arm64)
+            runner: macos-15
+            artifact: darwin-arm64-binaries
+          - os: macOS 15 (amd64)
+            runner: macos-15-intel
+            artifact: darwin-amd64-binaries
+          - os: Linux (amd64)
+            runner: ubuntu-latest
+            artifact: linux-amd64-binaries
+          - os: Linux (arm64)
+            runner: ubuntu-22.04-arm
+            artifact: linux-arm64-binaries
+
+    steps:
+      - name: Download binaries
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: ./bin
+
+      - name: Run canary
+        run: |
+          chmod +x ./bin/sweeper
+          ./bin/sweeper version

@@ -1,0 +1,12 @@
+{
+  "name": "papercomputeco-tools",
+  "owner": { "name": "papercomputeco" },
+  "plugins": [
+    {
+      "name": "sweeper",
+      "source": ".",
+      "description": "Agent-powered code maintenance with parallel sub-agents and tapes-driven learning",
+      "version": "0.1.0"
+    }
+  ]
+}
