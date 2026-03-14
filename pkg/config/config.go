@@ -18,7 +18,7 @@ type Config struct {
 func Default() Config {
 	return Config{
 		TargetDir:      ".",
-		Concurrency:    3,
+		Concurrency:    5,
 		TelemetryDir:   ".sweeper/telemetry",
 		DryRun:         false,
 		MaxRounds:      1,

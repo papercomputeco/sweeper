@@ -47,6 +47,61 @@ func TestBuildRawPrompt(t *testing.T) {
 	}
 }
 
+func TestClaudeExecutorUsesTaskPrompt(t *testing.T) {
+	dir := t.TempDir()
+	fakeClaude := filepath.Join(dir, "claude")
+	// Script echoes the prompt argument (4th arg) so we can verify it
+	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"$3\""), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	customPrompt := "custom retry prompt for testing"
+	task := Task{
+		ID:   0,
+		File: "test.go",
+		Dir:  t.TempDir(),
+		Issues: []linter.Issue{
+			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
+		},
+		Prompt: customPrompt,
+	}
+	result := ClaudeExecutor(context.Background(), task)
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s", result.Error)
+	}
+	if !strings.Contains(result.Output, customPrompt) {
+		t.Errorf("expected executor to use task.Prompt %q, got output: %s", customPrompt, result.Output)
+	}
+}
+
+func TestClaudeExecutorFallsBackToBuildPrompt(t *testing.T) {
+	dir := t.TempDir()
+	fakeClaude := filepath.Join(dir, "claude")
+	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"$3\""), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", dir)
+
+	task := Task{
+		ID:   0,
+		File: "test.go",
+		Dir:  t.TempDir(),
+		Issues: []linter.Issue{
+			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
+		},
+		// Prompt intentionally left empty
+	}
+	result := ClaudeExecutor(context.Background(), task)
+	if !result.Success {
+		t.Fatalf("expected success, got error: %s", result.Error)
+	}
+	// When Prompt is empty, BuildPrompt output should be used
+	if !strings.Contains(result.Output, "test.go") {
+		t.Errorf("expected BuildPrompt output referencing file, got: %s", result.Output)
+	}
+}
+
 func TestClaudeExecutorSuccess(t *testing.T) {
 	dir := t.TempDir()
 	fakeClaude := filepath.Join(dir, "claude")

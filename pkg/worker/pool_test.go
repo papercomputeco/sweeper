@@ -58,6 +58,51 @@ func TestPoolRespectsMaxConcurrency(t *testing.T) {
 	}
 }
 
+func TestPoolRunStream(t *testing.T) {
+	tasks := []Task{
+		{ID: 1, File: "a.go", Issues: []linter.Issue{{File: "a.go", Line: 1, Linter: "revive", Message: "msg"}}},
+		{ID: 2, File: "b.go", Issues: []linter.Issue{{File: "b.go", Line: 2, Linter: "revive", Message: "msg"}}},
+		{ID: 3, File: "c.go", Issues: []linter.Issue{{File: "c.go", Line: 3, Linter: "revive", Message: "msg"}}},
+	}
+	executor := func(ctx context.Context, t Task) Result {
+		time.Sleep(10 * time.Millisecond)
+		return Result{TaskID: t.ID, File: t.File, Success: true, IssuesFix: len(t.Issues)}
+	}
+	pool := NewPool(2, executor)
+	ch := pool.RunStream(context.Background(), tasks)
+
+	var results []Result
+	for r := range ch {
+		results = append(results, r)
+	}
+
+	if len(results) != 3 {
+		t.Fatalf("expected 3 results, got %d", len(results))
+	}
+	for _, r := range results {
+		if !r.Success {
+			t.Errorf("task %d failed", r.TaskID)
+		}
+	}
+}
+
+func TestPoolRunStreamEmpty(t *testing.T) {
+	executor := func(ctx context.Context, task Task) Result {
+		t.Fatal("executor should not be called for empty tasks")
+		return Result{}
+	}
+	pool := NewPool(2, executor)
+	ch := pool.RunStream(context.Background(), nil)
+
+	var count int
+	for range ch {
+		count++
+	}
+	if count != 0 {
+		t.Errorf("expected 0 results from empty stream, got %d", count)
+	}
+}
+
 func TestPoolRunEmpty(t *testing.T) {
 	executor := func(ctx context.Context, task Task) Result {
 		t.Fatal("executor should not be called for empty tasks")

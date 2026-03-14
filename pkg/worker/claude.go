@@ -8,7 +8,10 @@ import (
 
 func ClaudeExecutor(ctx context.Context, task Task) Result {
 	start := time.Now()
-	prompt := BuildPrompt(task)
+	prompt := task.Prompt
+	if prompt == "" {
+		prompt = BuildPrompt(task)
+	}
 	cmd := exec.CommandContext(ctx, "claude", "--print", "--dangerously-skip-permissions", prompt)
 	cmd.Dir = task.Dir
 	out, err := cmd.CombinedOutput()

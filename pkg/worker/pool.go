@@ -16,6 +16,26 @@ func NewPool(maxWorkers int, executor Executor) *Pool {
 	return &Pool{maxWorkers: maxWorkers, executor: executor}
 }
 
+func (p *Pool) RunStream(ctx context.Context, tasks []Task) <-chan Result {
+	ch := make(chan Result, len(tasks))
+	var wg sync.WaitGroup
+	sem := make(chan struct{}, p.maxWorkers)
+	for _, task := range tasks {
+		wg.Add(1)
+		go func(t Task) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+			ch <- p.executor(ctx, t)
+		}(task)
+	}
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+	return ch
+}
+
 func (p *Pool) Run(ctx context.Context, tasks []Task) []Result {
 	if len(tasks) == 0 {
 		return nil
