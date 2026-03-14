@@ -1,6 +1,6 @@
 # Sweeper
 
-AI-powered code maintenance tool that automates lint fixes through parallel Claude Code sub-agents.
+Agent-powered code maintenance tool that automates lint fixes through parallel Claude Code sub-agents.
 
 Sweeper runs your linter, groups issues by file, dispatches concurrent Claude Code agents to fix them, and records outcomes so it can learn from past runs. Inspired by [autoresearch](https://github.com/karpathy/autoresearch), it follows a read-decide-act-observe loop with RL-style prompt escalation and stagnation detection.
 
