@@ -135,7 +135,7 @@ Every sub-agent session is recorded in [tapes](https://github.com/papercomputeco
 
 Run `sweeper observe` after each sweep to see insights and tune your next run.
 
-## stereOS: Resource Isolation
+## VM Isolation
 
 Sub-agents can run inside ephemeral [stereOS](https://stereos.ai) virtual machines, managed by the `mb` (Masterblaster) CLI. This is what makes high concurrency safe.
 
