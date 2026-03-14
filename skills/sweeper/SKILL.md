@@ -1,11 +1,11 @@
 ---
 name: sweeper
-description: Autonomous lint-fix loop with parallel sub-agents, VM isolation, and tapes-driven learning. Orchestrates sweeper CLI to dispatch concurrent fixers, track token spend, and learn from outcomes.
+description: Agent-powered code maintenance with parallel sub-agents, VM isolation, and tapes-driven learning. Orchestrates sweeper CLI to dispatch concurrent agents for lint fixes, test repairs, migrations, refactoring, and any measurable code improvement target.
 ---
 
-# Sweeper - Autonomous Lint Fixer
+# Sweeper - Agent-Powered Code Maintenance
 
-You orchestrate the **sweeper** CLI to fix lint issues across a codebase using parallel Claude Code sub-agents with optional VM isolation. Tapes records every sub-agent session, enabling you to learn from past runs and optimize token spend.
+You orchestrate the **sweeper** CLI to run parallel Claude Code sub-agents against a codebase with optional VM isolation. While lint fixing is the default, the same loop handles test repairs, dependency migrations, refactoring, and any task where you can run a command, parse issues, and dispatch agents to fix them. Tapes records every sub-agent session, enabling you to learn from past runs and optimize token spend.
 
 ## Prerequisites
 
