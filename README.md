@@ -1,4 +1,4 @@
-# 🧹 Sweeper
+# 🧹 Sweeper Agent
 
 AI-powered code maintenance tool that automates lint fixes through parallel Claude Code sub-agents.
 
