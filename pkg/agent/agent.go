@@ -73,9 +73,9 @@ func New(cfg config.Config, opts ...Option) *Agent {
 }
 
 func (a *Agent) Run(ctx context.Context) (Summary, error) {
-	defer a.pub.Close()
+	defer func() { _ = a.pub.Close() }()
 	if a.vm != nil {
-		defer a.vm.Shutdown()
+		defer func() { _ = a.vm.Shutdown() }()
 	}
 
 	if !a.cfg.NoTapes {
@@ -105,7 +105,7 @@ func (a *Agent) Run(ctx context.Context) (Summary, error) {
 		fmt.Printf("Session: %s\n", sp)
 	}
 
-	a.pub.Publish(telemetry.Event{
+	_ = a.pub.Publish(telemetry.Event{
 		Timestamp: time.Now(),
 		Type:      "init",
 		Data: map[string]any{
@@ -276,7 +276,7 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 		if !reResult.Parsed || len(reResult.Issues) == 0 {
 			fmt.Println("All issues resolved!")
 			if a.sessionPath != "" {
-				session.UpdateStatus(a.sessionPath, round+1, len(reResult.Issues), summary.Fixed, 0)
+				_ = session.UpdateStatus(a.sessionPath, round+1, len(reResult.Issues), summary.Fixed, 0)
 			}
 			break
 		}
@@ -285,7 +285,7 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 		issues = filterRetryableIssues(reResult.Issues, fileHistories, explorationAttempted, a.cfg.StaleThreshold)
 
 		if a.sessionPath != "" {
-			session.UpdateStatus(a.sessionPath, round+1, len(reResult.Issues), summary.Fixed, len(issues))
+			_ = session.UpdateStatus(a.sessionPath, round+1, len(reResult.Issues), summary.Fixed, len(issues))
 		}
 	}
 
@@ -299,7 +299,7 @@ func (a *Agent) runRound(ctx context.Context, tasks []worker.Task) []worker.Resu
 }
 
 func (a *Agent) publishFixAttempt(r worker.Result, linterName string, round int, strategy loop.Strategy) {
-	a.pub.Publish(telemetry.Event{
+	_ = a.pub.Publish(telemetry.Event{
 		Timestamp: time.Now(),
 		Type:      "fix_attempt",
 		Data: map[string]any{
@@ -325,7 +325,7 @@ func (a *Agent) publishRoundComplete(round int, linterName string, taskCount int
 			failed++
 		}
 	}
-	a.pub.Publish(telemetry.Event{
+	_ = a.pub.Publish(telemetry.Event{
 		Timestamp: time.Now(),
 		Type:      "round_complete",
 		Data: map[string]any{
@@ -363,7 +363,7 @@ func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterNam
 		} else {
 			summary.Failed++
 		}
-		a.pub.Publish(telemetry.Event{
+		_ = a.pub.Publish(telemetry.Event{
 			Timestamp: time.Now(),
 			Type:      "fix_attempt",
 			Data: map[string]any{

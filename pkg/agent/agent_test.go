@@ -241,8 +241,12 @@ func TestAgentRunTapesAvailable(t *testing.T) {
 	// Create a fake tapes DB in the target dir to cover the "Tapes: using" branch.
 	dir := t.TempDir()
 	tapesDir := dir + "/.tapes"
-	os.MkdirAll(tapesDir, 0o755)
-	os.WriteFile(tapesDir+"/tapes.db", []byte("fake"), 0o644)
+	if err := os.MkdirAll(tapesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(tapesDir+"/tapes.db", []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.Config{
 		TargetDir:    dir,
@@ -710,7 +714,9 @@ func TestAgentRunSessionDocError(t *testing.T) {
 	// Use a target dir that is a file (not a directory) so .sweeper creation fails.
 	tmp := t.TempDir()
 	blocker := tmp + "/.sweeper"
-	os.WriteFile(blocker, []byte("x"), 0o444)
+	if err := os.WriteFile(blocker, []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := config.Config{
 		TargetDir:    tmp,

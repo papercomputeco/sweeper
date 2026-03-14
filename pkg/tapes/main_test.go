@@ -10,11 +10,11 @@ func TestMain(m *testing.M) {
 	// on developer machines, keeping tests hermetic.
 	dir, err := os.MkdirTemp("", "tapes-test-home-*")
 	if err == nil {
-		os.Setenv("HOME", dir)
+		_ = os.Setenv("HOME", dir)
 	}
 	code := m.Run()
 	if dir != "" {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	}
 	os.Exit(code)
 }

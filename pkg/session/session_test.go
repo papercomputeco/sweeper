@@ -47,11 +47,15 @@ func TestGenerateSessionDoc(t *testing.T) {
 
 func TestGenerateSessionDocResume(t *testing.T) {
 	dir := filepath.Join(t.TempDir(), ".sweeper")
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 
 	existing := "existing content"
 	existingPath := filepath.Join(dir, "sweeper.md")
-	os.WriteFile(existingPath, []byte(existing), 0o644)
+	if err := os.WriteFile(existingPath, []byte(existing), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	cfg := Config{
 		Objective:   "Fix lint issues",
@@ -77,7 +81,9 @@ func TestGenerateSessionDocResume(t *testing.T) {
 func TestUpdateStatus(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, "sweeper.md")
-	os.WriteFile(path, []byte("# Session\n"), 0o644)
+	if err := os.WriteFile(path, []byte("# Session\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	err := UpdateStatus(path, 1, 10, 3, 7)
 	if err != nil {
@@ -114,7 +120,9 @@ func TestUpdateStatusMissingFile(t *testing.T) {
 func TestGenerateSessionDocMkdirError(t *testing.T) {
 	// Use a path under a read-only file to force MkdirAll to fail.
 	blocker := filepath.Join(t.TempDir(), "blocker")
-	os.WriteFile(blocker, []byte("x"), 0o444)
+	if err := os.WriteFile(blocker, []byte("x"), 0o444); err != nil {
+		t.Fatal(err)
+	}
 
 	dir := filepath.Join(blocker, "subdir")
 	cfg := Config{Objective: "test"}
@@ -128,10 +136,18 @@ func TestGenerateSessionDocMkdirError(t *testing.T) {
 func TestGenerateSessionDocWriteError(t *testing.T) {
 	// Create the directory as read-only so WriteFile fails.
 	dir := filepath.Join(t.TempDir(), ".sweeper")
-	os.MkdirAll(dir, 0o755)
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	// Make directory read-only after creation so WriteFile fails.
-	os.Chmod(dir, 0o555)
-	defer os.Chmod(dir, 0o755) // cleanup
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		if err := os.Chmod(dir, 0o755); err != nil {
+			t.Error(err)
+		}
+	}()
 
 	cfg := Config{Objective: "test"}
 

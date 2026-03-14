@@ -10,11 +10,11 @@ func TestMain(m *testing.M) {
 	// allowing us to test the "tapes not available" code paths.
 	dir, err := os.MkdirTemp("", "agent-test-home-*")
 	if err == nil {
-		os.Setenv("HOME", dir)
+		_ = os.Setenv("HOME", dir)
 	}
 	code := m.Run()
 	if dir != "" {
-		os.RemoveAll(dir)
+		_ = os.RemoveAll(dir)
 	}
 	os.Exit(code)
 }

@@ -58,7 +58,7 @@ func insertNode(t *testing.T, db *sql.DB, hash, parentHash, role, content, model
 
 func TestReaderListSessions(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	insertNode(t, db, "root1", "", "user", `[{"type":"text","text":"fix bug"}]`, "claude-sonnet-4-20250514", 0, 0)
 	insertNode(t, db, "root2", "", "user", `[{"type":"text","text":"refactor"}]`, "claude-sonnet-4-20250514", 0, 0)
@@ -76,7 +76,7 @@ func TestReaderListSessions(t *testing.T) {
 
 func TestReaderGetSession(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	insertNode(t, db, "root1", "", "user", `[{"type":"text","text":"fix lint"}]`, "claude-sonnet-4-20250514", 10, 0)
 	insertNode(t, db, "child1", "root1", "assistant", `[{"type":"text","text":"fixing..."}]`, "claude-sonnet-4-20250514", 100, 50)
@@ -103,7 +103,7 @@ func TestReaderGetSession(t *testing.T) {
 
 func TestReaderGetSessionNotFound(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader := NewReaderFromDB(db)
 	session, err := reader.GetSession("nonexistent")
@@ -117,7 +117,7 @@ func TestReaderGetSessionNotFound(t *testing.T) {
 
 func TestReaderRecentSessions(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	insertNode(t, db, "root1", "", "user", `[{"type":"text","text":"old"}]`, "claude-sonnet-4-20250514", 0, 0)
 	insertNode(t, db, "root2", "", "user", `[{"type":"text","text":"new"}]`, "claude-sonnet-4-20250514", 0, 0)
@@ -149,7 +149,7 @@ func TestReaderClose(t *testing.T) {
 
 func TestReaderListSessionsEmpty(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader := NewReaderFromDB(db)
 	sessions, err := reader.ListSessions()
@@ -163,7 +163,7 @@ func TestReaderListSessionsEmpty(t *testing.T) {
 
 func TestReaderRecentSessionsEmpty(t *testing.T) {
 	db := setupTestDB(t)
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 
 	reader := NewReaderFromDB(db)
 	sessions, err := reader.RecentSessions(10)
@@ -178,7 +178,9 @@ func TestReaderRecentSessionsEmpty(t *testing.T) {
 func TestReaderListSessionsClosedDB(t *testing.T) {
 	db := setupTestDB(t)
 	reader := NewReaderFromDB(db)
-	db.Close()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	_, err := reader.ListSessions()
 	if err == nil {
 		t.Error("expected error querying closed DB")
@@ -188,7 +190,9 @@ func TestReaderListSessionsClosedDB(t *testing.T) {
 func TestReaderRecentSessionsClosedDB(t *testing.T) {
 	db := setupTestDB(t)
 	reader := NewReaderFromDB(db)
-	db.Close()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	_, err := reader.RecentSessions(10)
 	if err == nil {
 		t.Error("expected error querying closed DB")
@@ -198,7 +202,9 @@ func TestReaderRecentSessionsClosedDB(t *testing.T) {
 func TestReaderGetSessionClosedDB(t *testing.T) {
 	db := setupTestDB(t)
 	reader := NewReaderFromDB(db)
-	db.Close()
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 	_, err := reader.GetSession("root1")
 	if err == nil {
 		t.Error("expected error querying closed DB")
@@ -212,21 +218,29 @@ func TestNewReaderValidDB(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	db.Exec("CREATE TABLE nodes (hash TEXT)")
-	db.Close()
+	if _, err := db.Exec("CREATE TABLE nodes (hash TEXT)"); err != nil {
+		t.Fatal(err)
+	}
+	if err := db.Close(); err != nil {
+		t.Fatal(err)
+	}
 
 	reader, err := NewReader(dbPath)
 	if err != nil {
 		t.Fatalf("unexpected error: %v", err)
 	}
-	reader.Close()
+	if err := reader.Close(); err != nil {
+		t.Errorf("unexpected error closing reader: %v", err)
+	}
 }
 
 func TestNewReaderPingError(t *testing.T) {
 	// A non-SQLite file will fail on Ping.
 	dir := t.TempDir()
 	dbPath := dir + "/bad.db"
-	os.WriteFile(dbPath, []byte("not a sqlite file"), 0o644)
+	if err := os.WriteFile(dbPath, []byte("not a sqlite file"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 	_, err := NewReader(dbPath)
 	if err == nil {
 		t.Error("expected error for corrupt DB file")
@@ -239,10 +253,14 @@ func TestReaderListSessionsScanError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	// Create nodes with hash as BLOB instead of TEXT — Scan(&string) may fail.
-	db.Exec(`CREATE TABLE nodes (hash BLOB, parent_hash TEXT, role TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
-	db.Exec(`INSERT INTO nodes (hash, parent_hash) VALUES (X'DEADBEEF', NULL)`)
+	if _, err := db.Exec(`CREATE TABLE nodes (hash BLOB, parent_hash TEXT, role TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO nodes (hash, parent_hash) VALUES (X'DEADBEEF', NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	reader := NewReaderFromDB(db)
 	// ListSessions will try to scan BLOB into string.
 	sessions, err := reader.ListSessions()
@@ -258,17 +276,21 @@ func TestReaderGetSessionNullTimestamp(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
-	db.Exec(`CREATE TABLE nodes (
+	defer func() { _ = db.Close() }()
+	if _, err := db.Exec(`CREATE TABLE nodes (
 		hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, content JSON,
 		model TEXT, provider TEXT, agent_name TEXT, prompt_tokens INTEGER,
 		completion_tokens INTEGER, total_tokens INTEGER,
 		cache_creation_input_tokens INTEGER, cache_read_input_tokens INTEGER,
 		project TEXT, created_at TEXT
-	)`)
+	)`); err != nil {
+		t.Fatal(err)
+	}
 	// Explicitly insert NULL created_at (no DEFAULT) to trigger scan error
-	db.Exec(`INSERT INTO nodes (hash, parent_hash, role, content, model, prompt_tokens, completion_tokens, total_tokens, created_at)
-		VALUES ('root1', NULL, 'user', '[]', 'model', 0, 0, 0, NULL)`)
+	if _, err := db.Exec(`INSERT INTO nodes (hash, parent_hash, role, content, model, prompt_tokens, completion_tokens, total_tokens, created_at)
+		VALUES ('root1', NULL, 'user', '[]', 'model', 0, 0, 0, NULL)`); err != nil {
+		t.Fatal(err)
+	}
 	reader := NewReaderFromDB(db)
 	// GetSession tries to scan NULL into time.Time which may error.
 	// Either way, exercise the code path.
@@ -282,10 +304,14 @@ func TestReaderGetSessionScanError(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer db.Close()
+	defer func() { _ = db.Close() }()
 	// Create table missing columns that GetSession expects.
-	db.Exec(`CREATE TABLE nodes (hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`)
-	db.Exec(`INSERT INTO nodes (hash, parent_hash, role, created_at) VALUES ('root1', NULL, 'user', CURRENT_TIMESTAMP)`)
+	if _, err := db.Exec(`CREATE TABLE nodes (hash TEXT PRIMARY KEY, parent_hash TEXT, role TEXT, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO nodes (hash, parent_hash, role, created_at) VALUES ('root1', NULL, 'user', CURRENT_TIMESTAMP)`); err != nil {
+		t.Fatal(err)
+	}
 	reader := NewReaderFromDB(db)
 	// GetSession SELECTs more columns than exist — should trigger an error.
 	_, err = reader.GetSession("root1")

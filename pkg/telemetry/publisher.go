@@ -22,7 +22,7 @@ type Publisher struct {
 }
 
 func NewPublisher(dir string) *Publisher {
-	os.MkdirAll(dir, 0o755)
+	_ = os.MkdirAll(dir, 0o755)
 	return &Publisher{dir: dir}
 }
 

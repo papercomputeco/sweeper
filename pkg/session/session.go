@@ -38,7 +38,7 @@ func UpdateStatus(path string, round, found, fixed, remaining int) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	entry := fmt.Sprintf("\n### Round %d (%s)\n- Issues at start: %d\n- Fixed: %d\n- Remaining: %d\n",
 		round, time.Now().Format("15:04:05"), found, fixed, remaining)

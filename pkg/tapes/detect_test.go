@@ -10,9 +10,13 @@ import (
 func TestFindDBFound(t *testing.T) {
 	dir := t.TempDir()
 	tapesDir := filepath.Join(dir, ".tapes")
-	os.MkdirAll(tapesDir, 0o755)
+	if err := os.MkdirAll(tapesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	dbPath := filepath.Join(tapesDir, "tapes.db")
-	os.WriteFile(dbPath, []byte("fake"), 0o644)
+	if err := os.WriteFile(dbPath, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	result := FindDB(dir)
 	if result == "" {
@@ -26,9 +30,13 @@ func TestFindDBFound(t *testing.T) {
 func TestFindDBSqlite(t *testing.T) {
 	dir := t.TempDir()
 	tapesDir := filepath.Join(dir, ".tapes")
-	os.MkdirAll(tapesDir, 0o755)
+	if err := os.MkdirAll(tapesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	dbPath := filepath.Join(tapesDir, "tapes.sqlite")
-	os.WriteFile(dbPath, []byte("fake"), 0o644)
+	if err := os.WriteFile(dbPath, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	result := FindDB(dir)
 	if result != dbPath {
@@ -55,9 +63,13 @@ func TestFindDBHomeFallback(t *testing.T) {
 func TestCheckInstallationWithDBPath(t *testing.T) {
 	dir := t.TempDir()
 	tapesDir := filepath.Join(dir, ".tapes")
-	os.MkdirAll(tapesDir, 0o755)
+	if err := os.MkdirAll(tapesDir, 0o755); err != nil {
+		t.Fatal(err)
+	}
 	dbPath := filepath.Join(tapesDir, "tapes.db")
-	os.WriteFile(dbPath, []byte("fake"), 0o644)
+	if err := os.WriteFile(dbPath, []byte("fake"), 0o644); err != nil {
+		t.Fatal(err)
+	}
 
 	status := CheckInstallation(dbPath)
 	if !status.Available {

@@ -11,7 +11,7 @@ import (
 func TestPublishWritesJSONL(t *testing.T) {
 	dir := t.TempDir()
 	pub := NewPublisher(dir)
-	defer pub.Close()
+	defer func() { _ = pub.Close() }()
 	event := Event{
 		Timestamp: time.Now(),
 		Type:      "fix_attempt",
@@ -24,7 +24,9 @@ func TestPublishWritesJSONL(t *testing.T) {
 	if err := pub.Publish(event); err != nil {
 		t.Fatal(err)
 	}
-	pub.Close()
+	if err := pub.Close(); err != nil {
+		t.Fatal(err)
+	}
 	files, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	if len(files) != 1 {
 		t.Fatalf("expected 1 jsonl file, got %d", len(files))
@@ -42,7 +44,7 @@ func TestPublishWritesJSONL(t *testing.T) {
 func TestPublishMultipleReusesFile(t *testing.T) {
 	dir := t.TempDir()
 	pub := NewPublisher(dir)
-	defer pub.Close()
+	defer func() { _ = pub.Close() }()
 	e1 := Event{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"file": "a.go"}}
 	e2 := Event{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"file": "b.go"}}
 	if err := pub.Publish(e1); err != nil {
@@ -51,7 +53,9 @@ func TestPublishMultipleReusesFile(t *testing.T) {
 	if err := pub.Publish(e2); err != nil {
 		t.Fatal(err)
 	}
-	pub.Close()
+	if err := pub.Close(); err != nil {
+		t.Fatal(err)
+	}
 	files, _ := filepath.Glob(filepath.Join(dir, "*.jsonl"))
 	if len(files) != 1 {
 		t.Fatalf("expected 1 jsonl file after multiple publishes, got %d", len(files))
@@ -60,7 +64,7 @@ func TestPublishMultipleReusesFile(t *testing.T) {
 
 func TestPublishInvalidDir(t *testing.T) {
 	pub := NewPublisher("/nonexistent/path/that/cannot/exist")
-	defer pub.Close()
+	defer func() { _ = pub.Close() }()
 	err := pub.Publish(Event{Timestamp: time.Now(), Type: "test"})
 	if err == nil {
 		t.Error("expected error when publishing to invalid directory")
@@ -79,7 +83,7 @@ func TestCloseWithoutPublish(t *testing.T) {
 func TestPublishMarshalError(t *testing.T) {
 	dir := t.TempDir()
 	pub := NewPublisher(dir)
-	defer pub.Close()
+	defer func() { _ = pub.Close() }()
 	// Channels are not JSON-serializable.
 	event := Event{
 		Timestamp: time.Now(),
