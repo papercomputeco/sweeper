@@ -1,6 +1,6 @@
 # 🧹 Sweeper Agent
 
-Multi-threaded code maintenance with resource-isolated sub-agents.
+Multi-threaded code maintenance with resource isolated subagents.
 
 Sweeper dispatches parallel Claude Code agents to fix lint issues across your codebase, each running in its own isolated environment. It groups issues by file, fans out concurrent fixes, escalates strategy when fixes stall, and records outcomes so it learns what works. With VM isolation enabled, each sub-agent runs inside a dedicated stereOS virtual machine with its own CPU, memory, and secrets boundary, safe to scale to 10+ concurrent agents.
 
