@@ -120,6 +120,36 @@ pi install sweeper
 
 This gives you `init_sweep`, `run_linter`, and `log_result` tools plus a dashboard widget. To start a sweep, tell Pi: "Sweep this project for lint issues"
 
+## Examples
+
+Sweeper works with any command that produces output, not just linters.
+
+```bash
+# Fix all golangci-lint issues (default)
+sweeper run
+
+# Fix ESLint issues across a JS/TS project
+sweeper run -- npx eslint --quiet .
+
+# Fix Clippy warnings in a Rust project
+sweeper run -- cargo clippy 2>&1
+
+# Run a custom script that checks for AI slop patterns
+sweeper run -- ./scripts/check-slop.sh
+
+# High concurrency with VM isolation
+sweeper run --vm -c 10 --max-rounds 3 -- npm run lint
+```
+
+When using sweeper as a skill, you can pass arbitrary goals to the agent:
+
+- "Run sweeper on this project" — default lint-fix loop
+- "Run sweeper to clean up AI slop — remove verbose comments, unnecessary null checks, filler docstrings, and over-abstractions"
+- "Run sweeper to fix all failing tests"
+- "Run sweeper to migrate deprecated API calls"
+
+The agent will pick the right command and flags based on your goal.
+
 ## How It Works
 
 This describes the Go CLI and skill-based integrations (Claude Code, opencode). Pi manages its own lint-fix loop through built-in tools and does not use the CLI.
