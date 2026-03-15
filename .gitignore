@@ -7,3 +7,6 @@ coverage.out
 
 # Sweeper ephemeral VM jcards (contain secrets)
 .sweeper/vm/
+
+# Dependencies
+node_modules/
