@@ -94,6 +94,8 @@ Claude will orchestrate `sweeper run` with the right flags based on your project
 
 ### opencode
 
+> **Note:** opencode and Pi integrations have only been lightly tested. Claude Code is the primary development and testing target.
+
 To use sweeper as a skill in [opencode](https://opencode.ai) (a terminal-based AI coding agent):
 
 1. Build the binary:
