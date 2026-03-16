@@ -19,7 +19,7 @@ func TestBuildRetryPrompt(t *testing.T) {
 	if !strings.Contains(got, "Line 5") {
 		t.Error("expected line number")
 	}
-	if !strings.Contains(got, "previous attempt") {
+	if !strings.Contains(got, "previous attempt") && !strings.Contains(got, "was tried") {
 		t.Error("expected prior attempt reference")
 	}
 	if !strings.Contains(got, "added a comment but wrong format") {
@@ -51,8 +51,8 @@ func TestBuildExplorationPrompt(t *testing.T) {
 		Issues: []linter.Issue{{File: "handler.go", Line: 20, Message: "cyclomatic complexity", Linter: "revive"}},
 	}
 	got := BuildExplorationPrompt(task, "tried simplifying condition")
-	if !strings.Contains(got, "WARNING") {
-		t.Error("expected WARNING directive")
+	if !strings.Contains(got, "Previous approaches have not resolved") {
+		t.Error("expected stagnation context")
 	}
 	if !strings.Contains(got, "refactoring") {
 		t.Error("expected refactoring instruction")

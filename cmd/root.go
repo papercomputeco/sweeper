@@ -4,9 +4,12 @@ import (
 	"github.com/spf13/cobra"
 )
 
+import "time"
+
 var (
 	targetDir   string
 	concurrency int
+	rateLimit   time.Duration
 	noTapes     bool
 )
 
@@ -17,7 +20,8 @@ func NewRootCmd() *cobra.Command {
 		Long:  "Runs linters, dispatches Claude Code sub-agents to fix issues in parallel, and learns from outcomes.",
 	}
 	root.PersistentFlags().StringVarP(&targetDir, "target", "t", ".", "target directory to maintain")
-	root.PersistentFlags().IntVarP(&concurrency, "concurrency", "c", 3, "max parallel sub-agents")
+	root.PersistentFlags().IntVarP(&concurrency, "concurrency", "c", 2, "max parallel sub-agents")
+	root.PersistentFlags().DurationVar(&rateLimit, "rate-limit", 2*time.Second, "minimum delay between agent dispatches (e.g. 2s, 500ms)")
 	root.PersistentFlags().BoolVar(&noTapes, "no-tapes", false, "disable tapes integration")
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newRunCmd())

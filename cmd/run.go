@@ -38,9 +38,14 @@ Examples:
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
+			clamped := config.ClampConcurrency(concurrency)
+			if clamped != concurrency {
+				fmt.Printf("Concurrency clamped to %d (max %d)\n", clamped, config.MaxConcurrency)
+			}
 			cfg := config.Config{
 				TargetDir:      targetDir,
-				Concurrency:    concurrency,
+				Concurrency:    clamped,
+				RateLimit:      rateLimit,
 				TelemetryDir:   ".sweeper/telemetry",
 				DryRun:         dryRun,
 				NoTapes:        noTapes,

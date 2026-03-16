@@ -5,31 +5,31 @@ Multi-threaded code maintenance with resource-isolated sub-agents.
 Sweeper dispatches parallel Claude Code agents to fix lint issues across your codebase, each running in its own isolated environment. It groups issues by file, fans out concurrent fixes, escalates strategy when fixes stall, and records outcomes so it learns what works. With VM isolation enabled, each sub-agent runs inside a dedicated stereOS virtual machine with its own CPU, memory, and secrets boundary, safe to scale to 10+ concurrent agents.
 
 ```
-                        sweeper run --vm -c 10
+                        sweeper run --vm -c 5
                               │
                     ┌─────────┼─────────┐
                     ▼         ▼         ▼
               ┌──────────────────────────────┐
               │        Worker Pool           │
-              │   (semaphore-bounded, N=10)  │
-              └──┬───┬───┬───┬───┬───┬──────┘
-                 │   │   │   │   │   │
-                 ▼   ▼   ▼   ▼   ▼   ▼
-               ┌───┐┌───┐┌───┐┌───┐┌───┐┌───┐
-               │VM ││VM ││VM ││VM ││VM ││VM │  ◄── stereOS isolation
-               │ 1 ││ 2 ││ 3 ││ 4 ││ 5 ││...│      (secrets, CPU, memory)
-               └─┬─┘└─┬─┘└─┬─┘└─┬─┘└─┬─┘└─┬─┘
-                 │     │     │     │     │     │
-                 ▼     ▼     ▼     ▼     ▼     ▼
-              claude  claude claude claude claude claude
-              --print --print --print --print --print --print
-                 │     │     │     │     │     │
-                 └─────┴─────┴──┬──┴─────┴─────┘
-                                │
-                    ┌───────────┼───────────┐
-                    ▼           ▼           ▼
-               streaming    telemetry    tapes
-               progress     (.jsonl)    (SQLite)
+              │ (rate-limited, max N=5)      │
+              └──┬───┬───┬───┬───┬──────────┘
+                 │   │   │   │   │
+                 ▼   ▼   ▼   ▼   ▼
+               ┌───┐┌───┐┌───┐┌───┐┌───┐
+               │VM ││VM ││VM ││VM ││VM │  ◄── stereOS isolation
+               │ 1 ││ 2 ││ 3 ││ 4 ││ 5 │      (secrets, CPU, memory)
+               └─┬─┘└─┬─┘└─┬─┘└─┬─┘└─┬─┘
+                 │     │     │     │     │
+                 ▼     ▼     ▼     ▼     ▼
+              claude  claude claude claude claude
+              --print --print --print --print --print
+                 │     │     │     │     │
+                 └─────┴──┬──┴─────┴─────┘
+                          │
+                    ┌─────┼───────────┐
+                    ▼     ▼           ▼
+               streaming telemetry  tapes
+               progress  (.jsonl)  (SQLite)
 ```
 
 Each sub-agent works on a single file. Results stream back as they complete, giving real-time progress instead of blocking until the entire round finishes.
@@ -66,7 +66,7 @@ The core binary. All integrations below (except Pi) require this.
 ```bash
 go install github.com/papercomputeco/sweeper@latest
 sweeper run                              # default: golangci-lint
-sweeper run --vm -c 5 --max-rounds 3    # VM isolation, 5 agents, 3 rounds
+sweeper run --vm -c 3 --max-rounds 3    # VM isolation, 3 agents, 3 rounds
 sweeper run -- npm run lint              # any linter
 sweeper observe                          # review success rates + token spend
 ```
@@ -139,8 +139,8 @@ sweeper run -- cargo clippy 2>&1
 # Run a custom script that checks for AI slop patterns
 sweeper run -- ./scripts/check-slop.sh
 
-# High concurrency with VM isolation
-sweeper run --vm -c 10 --max-rounds 3 -- npm run lint
+# Higher concurrency with VM isolation
+sweeper run --vm -c 5 --max-rounds 3 -- npm run lint
 ```
 
 When using sweeper as a skill, you can pass arbitrary goals to the agent:
@@ -158,7 +158,7 @@ This describes the Go CLI and skill-based integrations (Claude Code, opencode). 
 
 1. **Lint**: run any linter, parse structured output (or fall back to raw mode)
 2. **Plan**: group issues by file, pick strategy per file based on history
-3. **Dispatch**: fan out to N concurrent sub-agents (default 5, up to 10+ with VMs)
+3. **Dispatch**: fan out to N concurrent sub-agents (default 2, max 5, rate-limited)
 4. **Stream**: results arrive in real time as each file completes
 5. **Escalate**: stalled files get retry prompts, then exploration prompts that consider surrounding code
 6. **Record**: outcomes logged to `.sweeper/telemetry/` and tapes captures token usage
@@ -179,7 +179,7 @@ Run `sweeper observe` after each sweep to see insights and tune your next run.
 
 Sub-agents can run inside ephemeral [stereOS](https://stereos.ai) virtual machines, managed by the `mb` (Masterblaster) CLI. This is what makes high concurrency safe.
 
-Without VMs, sub-agents share the host process, filesystem, and API keys. At low concurrency (5 or fewer) this works fine. At higher concurrency, you want each agent isolated so a runaway process or leaked credential stays contained.
+Without VMs, sub-agents share the host process, filesystem, and API keys. At low concurrency (2-3) this works fine. At higher concurrency, you want each agent isolated so a runaway process or leaked credential stays contained.
 
 With `--vm`, each sub-agent gets:
 
@@ -189,8 +189,20 @@ With `--vm`, each sub-agent gets:
 - **Clean teardown**: VMs are ephemeral. On exit (success, failure, or SIGINT), the VM is destroyed automatically.
 
 ```bash
-sweeper run --vm -c 10 --max-rounds 3    # 10 isolated agents, 3 retry rounds
+sweeper run --vm -c 5 --max-rounds 3    # 5 isolated agents, 3 retry rounds
 ```
+
+## Responsible Use
+
+Sweeper dispatches automated Claude sub-agents. To stay within [Anthropic's usage policy](https://www.anthropic.com/legal/aup):
+
+- **Rate limiting**: agents are dispatched with a configurable delay between each (default 2s, `--rate-limit`)
+- **Concurrency cap**: hard maximum of 5 parallel agents regardless of flags
+- **Scoped permissions**: sub-agents use `--allowedTools` with a narrow whitelist (Read, Write, Edit, Glob, Grep, limited Bash) instead of `--dangerously-skip-permissions`
+- **Backoff**: exponential delay between retry rounds (5s, 10s, 20s, ... capped at 60s)
+- **Agent identification**: all prompts identify the sub-agent as an automated tool with human oversight
+
+A human must initiate every sweep and should review all changes before committing.
 
 ## Session State
 

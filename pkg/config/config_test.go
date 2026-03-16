@@ -1,11 +1,17 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
 
 func TestDefaults(t *testing.T) {
 	cfg := Default()
-	if cfg.Concurrency != 5 {
-		t.Errorf("expected default concurrency 5, got %d", cfg.Concurrency)
+	if cfg.Concurrency != 2 {
+		t.Errorf("expected default concurrency 2, got %d", cfg.Concurrency)
+	}
+	if cfg.RateLimit != 2*time.Second {
+		t.Errorf("expected default rate limit 2s, got %s", cfg.RateLimit)
 	}
 	if cfg.TelemetryDir != ".sweeper/telemetry" {
 		t.Errorf("unexpected telemetry dir: %s", cfg.TelemetryDir)
@@ -30,6 +36,18 @@ func TestDefaultStaleThreshold(t *testing.T) {
 	cfg := Default()
 	if cfg.StaleThreshold != 2 {
 		t.Errorf("expected default StaleThreshold 2, got %d", cfg.StaleThreshold)
+	}
+}
+
+func TestClampConcurrency(t *testing.T) {
+	if ClampConcurrency(0) != 1 {
+		t.Error("should clamp 0 to 1")
+	}
+	if ClampConcurrency(3) != 3 {
+		t.Error("should leave 3 unchanged")
+	}
+	if ClampConcurrency(100) != MaxConcurrency {
+		t.Errorf("should clamp 100 to %d", MaxConcurrency)
 	}
 }
 

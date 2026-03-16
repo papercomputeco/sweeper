@@ -360,7 +360,7 @@ func TestAgentRunStagnationTriggersExploration(t *testing.T) {
 	}
 	var gotExplorationPrompt bool
 	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
-		if contains(task.Prompt, "WARNING") {
+		if contains(task.Prompt, "Previous approaches have not resolved") {
 			gotExplorationPrompt = true
 		}
 		return worker.Result{TaskID: task.ID, File: task.File, Success: false, Error: "failed", Output: "nope"}
@@ -417,6 +417,69 @@ func TestAgentRunReLintError(t *testing.T) {
 	}
 	if summary.Fixed != 1 {
 		t.Errorf("expected 1 fixed from round 1, got %d", summary.Fixed)
+	}
+}
+
+func TestAgentRunBackoffRespectsContextCancel(t *testing.T) {
+	callCount := 0
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		if callCount == 2 {
+			// Cancel context right before backoff would start
+			cancel()
+		}
+		return linter.ParseResult{Issues: issues, Parsed: true}, nil
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: 1, Output: "ok"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      3,
+		StaleThreshold: 2,
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	// Should complete quickly despite backoff because context is cancelled
+	_, _ = a.Run(ctx)
+}
+
+func TestAgentRunBackoffCapsAt60s(t *testing.T) {
+	issues := []linter.Issue{
+		{File: "a.go", Line: 1, Linter: "revive", Message: "msg"},
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	callCount := 0
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		callCount++
+		if callCount == 1 {
+			return linter.ParseResult{Issues: issues, Parsed: true}, nil
+		}
+		cancel() // cancel so backoff waits are instant
+		return linter.ParseResult{Issues: issues, Parsed: true}, nil
+	}
+	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
+		return worker.Result{TaskID: task.ID, File: task.File, Success: false, Error: "nope", Output: "nope"}
+	}
+	cfg := config.Config{
+		TargetDir:      t.TempDir(),
+		Concurrency:    1,
+		TelemetryDir:   t.TempDir(),
+		NoTapes:        true,
+		MaxRounds:      6,
+		StaleThreshold: 99, // prevent exploration so all rounds run
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithExecutor(fakeExecutor))
+	summary, _ := a.Run(ctx)
+	// Should reach enough rounds to trigger the 60s cap (round 4: 5<<4=80 > 60)
+	if summary.Rounds < 5 {
+		t.Errorf("expected at least 5 rounds to exercise backoff cap, got %d", summary.Rounds)
 	}
 }
 

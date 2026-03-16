@@ -103,6 +103,63 @@ func TestPoolRunStreamEmpty(t *testing.T) {
 	}
 }
 
+func TestPoolRateLimitSpacesTasks(t *testing.T) {
+	var mu sync.Mutex
+	var timestamps []time.Time
+	tasks := make([]Task, 3)
+	for i := range tasks {
+		tasks[i] = Task{ID: i, File: fmt.Sprintf("%d.go", i)}
+	}
+	executor := func(ctx context.Context, task Task) Result {
+		mu.Lock()
+		timestamps = append(timestamps, time.Now())
+		mu.Unlock()
+		return Result{TaskID: task.ID, Success: true}
+	}
+	pool := NewPoolWithRateLimit(3, 50*time.Millisecond, executor)
+	pool.Run(context.Background(), tasks)
+
+	if len(timestamps) != 3 {
+		t.Fatalf("expected 3 timestamps, got %d", len(timestamps))
+	}
+	// With 50ms rate limit between dispatches, total span should be >= 100ms
+	span := timestamps[len(timestamps)-1].Sub(timestamps[0])
+	if span < 80*time.Millisecond {
+		t.Errorf("expected dispatches spaced by rate limit, total span was %s", span)
+	}
+}
+
+func TestPoolRateLimitRespectsContextCancelRun(t *testing.T) {
+	tasks := make([]Task, 3)
+	for i := range tasks {
+		tasks[i] = Task{ID: i, File: fmt.Sprintf("%d.go", i)}
+	}
+	executor := func(ctx context.Context, task Task) Result {
+		return Result{TaskID: task.ID, Success: true}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+	pool := NewPoolWithRateLimit(3, 5*time.Second, executor)
+	// Should return quickly despite long rate limit because context is cancelled
+	pool.Run(ctx, tasks)
+}
+
+func TestPoolRateLimitRespectsContextCancelStream(t *testing.T) {
+	tasks := make([]Task, 3)
+	for i := range tasks {
+		tasks[i] = Task{ID: i, File: fmt.Sprintf("%d.go", i)}
+	}
+	executor := func(ctx context.Context, task Task) Result {
+		return Result{TaskID: task.ID, Success: true}
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel() // cancel immediately
+	pool := NewPoolWithRateLimit(3, 5*time.Second, executor)
+	ch := pool.RunStream(ctx, tasks)
+	for range ch {
+	}
+}
+
 func TestPoolRunEmpty(t *testing.T) {
 	executor := func(ctx context.Context, task Task) Result {
 		t.Fatal("executor should not be called for empty tasks")

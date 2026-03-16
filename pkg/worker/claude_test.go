@@ -50,8 +50,9 @@ func TestBuildRawPrompt(t *testing.T) {
 func TestClaudeExecutorUsesTaskPrompt(t *testing.T) {
 	dir := t.TempDir()
 	fakeClaude := filepath.Join(dir, "claude")
-	// Script echoes the prompt argument (4th arg) so we can verify it
-	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"$3\""), 0o755); err != nil {
+	// Script echoes the prompt argument (last arg) so we can verify it
+	// Args: --print --allowedTools <tools> <prompt>
+	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"${@: -1}\""), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
@@ -78,7 +79,7 @@ func TestClaudeExecutorUsesTaskPrompt(t *testing.T) {
 func TestClaudeExecutorFallsBackToBuildPrompt(t *testing.T) {
 	dir := t.TempDir()
 	fakeClaude := filepath.Join(dir, "claude")
-	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"$3\""), 0o755); err != nil {
+	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"${@: -1}\""), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", dir)
