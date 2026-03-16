@@ -3,8 +3,22 @@ package worker
 import (
 	"context"
 	"os/exec"
+	"strings"
 	"time"
 )
+
+// allowedTools is the narrow set of tools sweeper agents need for lint fixing.
+// Using --allowedTools instead of --dangerously-skip-permissions gives each
+// agent only the permissions it needs rather than a blanket safety bypass.
+var allowedTools = []string{
+	"Read",
+	"Write",
+	"Edit",
+	"Glob",
+	"Grep",
+	"Bash(go build:*)",
+	"Bash(go vet:*)",
+}
 
 func ClaudeExecutor(ctx context.Context, task Task) Result {
 	start := time.Now()
@@ -12,7 +26,11 @@ func ClaudeExecutor(ctx context.Context, task Task) Result {
 	if prompt == "" {
 		prompt = BuildPrompt(task)
 	}
-	cmd := exec.CommandContext(ctx, "claude", "--print", "--dangerously-skip-permissions", prompt)
+	cmd := exec.CommandContext(ctx, "claude",
+		"--print",
+		"--allowedTools", strings.Join(allowedTools, ","),
+		prompt,
+	)
 	cmd.Dir = task.Dir
 	out, err := cmd.CombinedOutput()
 	duration := time.Since(start)

@@ -281,6 +281,18 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 			break
 		}
 
+		// Exponential backoff between rounds: 5s, 10s, 20s, ...
+		backoff := time.Duration(5<<uint(round)) * time.Second
+		if backoff > 60*time.Second {
+			backoff = 60 * time.Second
+		}
+		fmt.Printf("Backoff: waiting %s before next round...\n", backoff)
+		select {
+		case <-ctx.Done():
+			break
+		case <-time.After(backoff):
+		}
+
 		// Filter to retryable issues
 		issues = filterRetryableIssues(reResult.Issues, fileHistories, explorationAttempted, a.cfg.StaleThreshold)
 
@@ -294,7 +306,7 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 }
 
 func (a *Agent) runRound(ctx context.Context, tasks []worker.Task) []worker.Result {
-	pool := worker.NewPool(a.cfg.Concurrency, a.executor)
+	pool := worker.NewPoolWithRateLimit(a.cfg.Concurrency, a.cfg.RateLimit, a.executor)
 	ch := pool.RunStream(ctx, tasks)
 	results := make([]worker.Result, 0, len(tasks))
 	for r := range ch {
