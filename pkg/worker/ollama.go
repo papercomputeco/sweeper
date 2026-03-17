@@ -40,12 +40,15 @@ func NewOllamaExecutor(cfg OllamaConfig) Executor {
 			prompt = BuildAPIPrompt(task)
 		}
 
-		body, err := ollamaChat(ctx, client, cfg, prompt)
+		chatResp, err := ollamaChat(ctx, client, cfg, prompt)
+		body := chatResp.Message.Content
 		duration := time.Since(start)
 		if err != nil {
 			return Result{
 				TaskID: task.ID, File: task.File, Success: false,
 				Output: body, Error: err.Error(), Duration: duration,
+				Provider: "ollama", Model: cfg.Model,
+				PromptTokens: chatResp.PromptEvalCount, OutputTokens: chatResp.EvalCount,
 			}
 		}
 
@@ -54,6 +57,8 @@ func NewOllamaExecutor(cfg OllamaConfig) Executor {
 			return Result{
 				TaskID: task.ID, File: task.File, Success: false,
 				Output: body, Error: "no diff block found in response", Duration: duration,
+				Provider: "ollama", Model: cfg.Model,
+				PromptTokens: chatResp.PromptEvalCount, OutputTokens: chatResp.EvalCount,
 			}
 		}
 
@@ -61,12 +66,16 @@ func NewOllamaExecutor(cfg OllamaConfig) Executor {
 			return Result{
 				TaskID: task.ID, File: task.File, Success: false,
 				Output: body, Error: fmt.Sprintf("patch failed: %v", err), Duration: duration,
+				Provider: "ollama", Model: cfg.Model,
+				PromptTokens: chatResp.PromptEvalCount, OutputTokens: chatResp.EvalCount,
 			}
 		}
 
 		return Result{
 			TaskID: task.ID, File: task.File, Success: true,
 			Output: body, Duration: duration, IssuesFix: len(task.Issues),
+			Provider: "ollama", Model: cfg.Model,
+			PromptTokens: chatResp.PromptEvalCount, OutputTokens: chatResp.EvalCount,
 		}
 	}
 }
@@ -83,10 +92,12 @@ type ollamaMessage struct {
 }
 
 type ollamaChatResponse struct {
-	Message ollamaMessage `json:"message"`
+	Message        ollamaMessage `json:"message"`
+	PromptEvalCount int          `json:"prompt_eval_count"`
+	EvalCount       int          `json:"eval_count"`
 }
 
-func ollamaChat(ctx context.Context, client *http.Client, cfg OllamaConfig, prompt string) (string, error) {
+func ollamaChat(ctx context.Context, client *http.Client, cfg OllamaConfig, prompt string) (ollamaChatResponse, error) {
 	reqBody := ollamaChatRequest{
 		Model: cfg.Model,
 		Messages: []ollamaMessage{
@@ -96,37 +107,37 @@ func ollamaChat(ctx context.Context, client *http.Client, cfg OllamaConfig, prom
 	}
 	data, err := json.Marshal(reqBody)
 	if err != nil {
-		return "", fmt.Errorf("marshaling request: %w", err)
+		return ollamaChatResponse{}, fmt.Errorf("marshaling request: %w", err)
 	}
 
 	url := strings.TrimRight(cfg.APIBase, "/") + "/api/chat"
 	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, bytes.NewReader(data))
 	if err != nil {
-		return "", fmt.Errorf("creating request: %w", err)
+		return ollamaChatResponse{}, fmt.Errorf("creating request: %w", err)
 	}
 	req.Header.Set("Content-Type", "application/json")
 
 	resp, err := client.Do(req)
 	if err != nil {
-		return "", fmt.Errorf("calling ollama: %w", err)
+		return ollamaChatResponse{}, fmt.Errorf("calling ollama: %w", err)
 	}
 	defer resp.Body.Close()
 
 	respData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", fmt.Errorf("reading response: %w", err)
+		return ollamaChatResponse{}, fmt.Errorf("reading response: %w", err)
 	}
 
 	if resp.StatusCode != http.StatusOK {
-		return string(respData), fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(respData))
+		return ollamaChatResponse{Message: ollamaMessage{Content: string(respData)}}, fmt.Errorf("ollama returned %d: %s", resp.StatusCode, string(respData))
 	}
 
 	var chatResp ollamaChatResponse
 	if err := json.Unmarshal(respData, &chatResp); err != nil {
-		return string(respData), fmt.Errorf("parsing response: %w", err)
+		return ollamaChatResponse{Message: ollamaMessage{Content: string(respData)}}, fmt.Errorf("parsing response: %w", err)
 	}
 
-	return chatResp.Message.Content, nil
+	return chatResp, nil
 }
 
 var (
