@@ -129,15 +129,24 @@ func ollamaChat(ctx context.Context, client *http.Client, cfg OllamaConfig, prom
 	return chatResp.Message.Content, nil
 }
 
-var diffBlockRe = regexp.MustCompile("(?s)```diff\\s*\n(.*?)```")
+var (
+	// Matches ```diff\n...\n``` (preferred format).
+	diffBlockRe = regexp.MustCompile("(?s)```diff\\s*\n(.*?)```")
+	// Fallback: matches ```\n...\n``` when content starts with diff/--- headers.
+	plainBlockRe = regexp.MustCompile("(?s)```\\s*\n((?:diff |--- ).*?)```")
+)
 
-// extractDiff pulls the first unified diff from ```diff ... ``` markers.
+// extractDiff pulls the first unified diff from fenced code blocks.
+// Prefers ```diff blocks, falls back to plain ``` blocks whose content
+// starts with "diff " or "--- " (common when models omit the language tag).
 func extractDiff(response string) string {
-	m := diffBlockRe.FindStringSubmatch(response)
-	if len(m) < 2 {
-		return ""
+	if m := diffBlockRe.FindStringSubmatch(response); len(m) >= 2 {
+		return strings.TrimSpace(m[1])
 	}
-	return strings.TrimSpace(m[1])
+	if m := plainBlockRe.FindStringSubmatch(response); len(m) >= 2 {
+		return strings.TrimSpace(m[1])
+	}
+	return ""
 }
 
 // applyDiff writes the diff to a temp file and runs `patch -p1` in the target dir.

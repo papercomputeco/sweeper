@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"os/exec"
+	"path/filepath"
 	"regexp"
 	"strconv"
 	"strings"
@@ -95,11 +96,17 @@ func parseMinimal(line string) (Issue, bool) {
 	if m == nil {
 		return Issue{}, false
 	}
+	msg := m[3]
+	// Skip go compiler package headers (e.g. ": # testproject") and
+	// malformed messages that start with ": " (mangled column parse).
+	if strings.HasPrefix(msg, ": ") || strings.HasPrefix(msg, "# ") {
+		return Issue{}, false
+	}
 	lineNum, _ := strconv.Atoi(m[2])
 	return Issue{
 		File:    m[1],
 		Line:    lineNum,
-		Message: m[3],
+		Message: msg,
 		Linter:  "custom",
 	}, true
 }
@@ -113,7 +120,33 @@ func RunCommand(ctx context.Context, dir string, cmd []string) (ParseResult, err
 			return ParseResult{}, fmt.Errorf("running %s: %w", cmd[0], err)
 		}
 	}
-	return ParseOutput(string(out)), nil
+	result := ParseOutput(string(out))
+	normalizeIssuePaths(result.Issues, dir)
+	return result, nil
+}
+
+// normalizeIssuePaths resolves parsed file paths relative to dir.
+// Linters sometimes emit absolute or CWD-relative paths for compile errors
+// (e.g. "../../../tmp/project/main.go") even when run from dir. This
+// normalizes them so they're consistent with the target directory.
+func normalizeIssuePaths(issues []Issue, dir string) {
+	absDir, err := filepath.Abs(dir)
+	if err != nil {
+		return
+	}
+	for i := range issues {
+		f := issues[i].File
+		// Resolve the file path against the command's working dir.
+		absFile := f
+		if !filepath.IsAbs(f) {
+			absFile = filepath.Join(absDir, f)
+		}
+		absFile = filepath.Clean(absFile)
+		// Make it relative to dir.
+		if rel, err := filepath.Rel(absDir, absFile); err == nil {
+			issues[i].File = rel
+		}
+	}
 }
 
 func Run(ctx context.Context, dir string) (ParseResult, error) {

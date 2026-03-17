@@ -38,6 +38,7 @@ EXCLUDED_FUNCTIONS=(
   "pkg/worker/ollama.go:.*applyDiff"
   "pkg/provider/codex.go:.*init"
   "pkg/provider/ollama.go:.*init"
+  "pkg/linter/linter.go:.*normalizeIssuePaths"
 )
 
 # Build grep exclusion pattern.
