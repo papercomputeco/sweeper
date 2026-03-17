@@ -92,9 +92,9 @@ type ollamaMessage struct {
 }
 
 type ollamaChatResponse struct {
-	Message        ollamaMessage `json:"message"`
-	PromptEvalCount int          `json:"prompt_eval_count"`
-	EvalCount       int          `json:"eval_count"`
+	Message         ollamaMessage `json:"message"`
+	PromptEvalCount int           `json:"prompt_eval_count"`
+	EvalCount       int           `json:"eval_count"`
 }
 
 func ollamaChat(ctx context.Context, client *http.Client, cfg OllamaConfig, prompt string) (ollamaChatResponse, error) {
