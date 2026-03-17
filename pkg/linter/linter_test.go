@@ -210,3 +210,34 @@ func TestRun(t *testing.T) {
 	// Run tries golangci-lint. Whether installed or not, the function itself is exercised.
 	_, _ = Run(context.Background(), t.TempDir())
 }
+
+func TestParseMinimalSkipsCompilerHeaders(t *testing.T) {
+	// golangci-lint typecheck errors produce lines like:
+	// ../../../tmp/project/main.go:1: : # testproject
+	raw := `../../../tmp/project/main.go:1: : # testproject
+./main.go:5:2: "os" imported and not used
+./main.go:9:2: declared and not used: x`
+	result := ParseOutput(raw)
+	// Should parse the 2 real issues but skip the compiler header.
+	if len(result.Issues) != 2 {
+		t.Errorf("expected 2 issues, got %d", len(result.Issues))
+		for _, iss := range result.Issues {
+			t.Logf("  %s:%d: %s", iss.File, iss.Line, iss.Message)
+		}
+	}
+}
+
+func TestNormalizeIssuePaths(t *testing.T) {
+	dir := t.TempDir()
+	issues := []Issue{
+		{File: "./main.go", Line: 1, Message: "err"},
+		{File: "pkg/foo.go", Line: 2, Message: "err"},
+	}
+	normalizeIssuePaths(issues, dir)
+	if issues[0].File != "main.go" {
+		t.Errorf("expected normalized main.go, got %s", issues[0].File)
+	}
+	if issues[1].File != "pkg/foo.go" {
+		t.Errorf("expected pkg/foo.go unchanged, got %s", issues[1].File)
+	}
+}

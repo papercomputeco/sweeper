@@ -1,6 +1,6 @@
 # Sweeper Skill
 
-Autonomous lint-fix agent skill powered by the sweeper CLI. Orchestrates parallel sub-agents with VM isolation and tapes-driven learning.
+Autonomous lint-fix agent skill powered by the sweeper CLI. Orchestrates parallel sub-agents with swappable AI providers (Claude, Codex, Ollama), VM isolation, and tapes-driven learning.
 
 ## Install in Claude Code
 
@@ -47,13 +47,14 @@ tapes init
 
 ## What It Does
 
-1. Orchestrates `sweeper run` to dispatch parallel Claude Code sub-agents
+1. Orchestrates `sweeper run` to dispatch parallel AI sub-agents (Claude, Codex, or Ollama)
 2. Each sub-agent fixes a file's lint issues concurrently (bounded by `--concurrency`)
 3. Retries with escalating strategies (standard -> retry -> exploration)
-4. Optional VM isolation via stereOS for security and resource isolation
-5. Tapes records every sub-agent session for token tracking and self-learning
-6. `sweeper observe` shows success rates, strategy effectiveness, and token spend
-7. Session state tracked in `sweeper.md` for resume across restarts
+4. Swappable providers: `--provider claude` (default), `--provider codex`, `--provider ollama --model <name>`
+5. Optional VM isolation via stereOS for security and resource isolation (CLI providers only)
+6. Tapes records every sub-agent session for token tracking and self-learning
+7. `sweeper observe` shows success rates, strategy effectiveness, and token spend
+8. Session state tracked in `sweeper.md` for resume across restarts
 
 ## Tapes — The Learning Center
 
