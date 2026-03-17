@@ -1,0 +1,11 @@
+src/App.tsx
+   2:10  error    'useState' is defined but never used   @typescript-eslint/no-unused-vars
+  34:10  warning  Unexpected any. Specify a different type  @typescript-eslint/no-explicit-any
+
+src/components/Header.tsx
+  8:1  error  Missing return type on function  @typescript-eslint/explicit-function-return-type
+
+src/utils/helpers.ts
+  22:3  warning  Unexpected console statement  no-console
+
+✖ 4 problems (2 errors, 2 warnings)
