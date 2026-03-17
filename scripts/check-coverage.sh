@@ -41,6 +41,7 @@ EXCLUDED_FUNCTIONS=(
   "pkg/linter/linter.go:.*normalizeIssuePaths"
   "pkg/dotdir/manager.go:.*Target"
   "pkg/dotdir/manager.go:.*TargetIn"
+  "pkg/telemetry/jsonl.go:.*NewPublisher"
 )
 
 # Build grep exclusion pattern.

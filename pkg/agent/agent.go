@@ -38,7 +38,7 @@ type Agent struct {
 	linterFn     LinterFunc
 	executor     worker.Executor
 	providerKind provider.Kind
-	pub          *telemetry.Publisher
+	pub          telemetry.Publisher
 	vm           VMManager
 	sessionPath  string
 }
@@ -57,6 +57,10 @@ func WithVM(vm VMManager) Option {
 	return func(a *Agent) { a.vm = vm }
 }
 
+func WithPublisher(pub telemetry.Publisher) Option {
+	return func(a *Agent) { a.pub = pub }
+}
+
 func defaultLinterFunc(ctx context.Context, dir string) (linter.ParseResult, error) {
 	return linter.Run(ctx, dir)
 }
@@ -65,7 +69,7 @@ func New(cfg config.Config, opts ...Option) *Agent {
 	a := &Agent{
 		cfg:      cfg,
 		linterFn: defaultLinterFunc,
-		pub:      telemetry.NewPublisher(cfg.TelemetryDir),
+		pub:      telemetry.NewJSONLPublisher(cfg.TelemetryDir),
 	}
 
 	// Resolve provider from registry; fall back to Claude if lookup fails
@@ -126,7 +130,7 @@ func (a *Agent) Run(ctx context.Context) (Summary, error) {
 		fmt.Printf("Session: %s\n", sp)
 	}
 
-	_ = a.pub.Publish(telemetry.Event{
+	_ = a.pub.Publish(ctx, telemetry.Event{
 		Timestamp: time.Now(),
 		Type:      "init",
 		Data: map[string]any{
@@ -219,7 +223,7 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 
 		for i, r := range results {
 			strategy := strategies[i]
-			a.publishFixAttempt(r, linterName, round, strategy)
+			a.publishFixAttempt(ctx, r, linterName, round, strategy)
 
 			// Update file history
 			fh, ok := fileHistories[r.File]
@@ -238,7 +242,7 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 			})
 		}
 
-		a.publishRoundComplete(round, linterName, len(tasks), results)
+		a.publishRoundComplete(ctx, round, linterName, len(tasks), results)
 
 		// If last round, tally results and stop
 		if round >= maxRounds-1 {
@@ -332,8 +336,8 @@ func (a *Agent) runRound(ctx context.Context, tasks []worker.Task) []worker.Resu
 	return results
 }
 
-func (a *Agent) publishFixAttempt(r worker.Result, linterName string, round int, strategy loop.Strategy) {
-	_ = a.pub.Publish(telemetry.Event{
+func (a *Agent) publishFixAttempt(ctx context.Context, r worker.Result, linterName string, round int, strategy loop.Strategy) {
+	_ = a.pub.Publish(ctx, telemetry.Event{
 		Timestamp: time.Now(),
 		Type:      "fix_attempt",
 		Data: map[string]any{
@@ -353,7 +357,7 @@ func (a *Agent) publishFixAttempt(r worker.Result, linterName string, round int,
 	})
 }
 
-func (a *Agent) publishRoundComplete(round int, linterName string, taskCount int, results []worker.Result) {
+func (a *Agent) publishRoundComplete(ctx context.Context, round int, linterName string, taskCount int, results []worker.Result) {
 	fixed := 0
 	failed := 0
 	for _, r := range results {
@@ -363,7 +367,7 @@ func (a *Agent) publishRoundComplete(round int, linterName string, taskCount int
 			failed++
 		}
 	}
-	_ = a.pub.Publish(telemetry.Event{
+	_ = a.pub.Publish(ctx, telemetry.Event{
 		Timestamp: time.Now(),
 		Type:      "round_complete",
 		Data: map[string]any{
@@ -401,7 +405,7 @@ func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterNam
 		} else {
 			summary.Failed++
 		}
-		_ = a.pub.Publish(telemetry.Event{
+		_ = a.pub.Publish(ctx, telemetry.Event{
 			Timestamp: time.Now(),
 			Type:      "fix_attempt",
 			Data: map[string]any{
