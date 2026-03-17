@@ -73,10 +73,11 @@ func NewPublisher(c Config) (*Publisher, error) {
 	}
 
 	kw := &kafka.Writer{
-		Addr:      kafka.TCP(c.Brokers...),
-		Topic:     c.Topic,
-		Balancer:  &kafka.Hash{},
-		Transport: transport,
+		Addr:         kafka.TCP(c.Brokers...),
+		Topic:        c.Topic,
+		Balancer:     &kafka.Hash{},
+		Transport:    transport,
+		RequiredAcks: kafka.RequireAll,
 	}
 
 	return newPublisherWithWriter(c, kw)
