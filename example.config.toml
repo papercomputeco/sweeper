@@ -1,0 +1,43 @@
+# .sweeper/config.toml — sweeper project configuration
+# Copy to .sweeper/config.toml or ~/.sweeper/config.toml
+#
+# Precedence (highest to lowest):
+#   1. CLI flags (--concurrency, --provider, etc.)
+#   2. SWEEPER_* environment variables
+#   3. .sweeper/config.toml (project)
+#   4. ~/.sweeper/config.toml (user)
+#   5. Built-in defaults
+
+version = 1
+
+[run]
+concurrency = 2
+rate_limit = "2s"
+max_rounds = 1
+stale_threshold = 2
+# dry_run = false
+# no_tapes = false
+
+[provider]
+name = "claude"
+# model = ""
+# api_base = ""
+# allowed_tools = ["Read", "Write", "Edit", "Glob", "Grep"]
+
+[telemetry]
+# backend: "jsonl" (default, always active) or "confluent" (adds Kafka fan-out)
+backend = "jsonl"
+dir = ".sweeper/telemetry"
+
+# [telemetry.confluent]
+# brokers = ["pkc-xxxxx.us-west-2.aws.confluent.cloud:9092"]
+# topic = "sweeper.telemetry"
+# client_id = "sweeper"
+# api_key_env = "CONFLUENT_API_KEY"
+# api_secret_env = "CONFLUENT_API_SECRET"
+# publish_timeout = "5s"
+
+# [vm]
+# enabled = false
+# name = ""
+# jcard = ""
