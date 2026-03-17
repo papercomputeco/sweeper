@@ -324,7 +324,7 @@ func TestAgentRunMultiRoundWithRetry(t *testing.T) {
 	}
 	var gotRetryPrompt bool
 	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
-		if contains(task.Prompt, "previous attempt") {
+		if strings.Contains(task.Prompt, "previous attempt") {
 			gotRetryPrompt = true
 		}
 		return worker.Result{TaskID: task.ID, File: task.File, Success: true, IssuesFix: len(task.Issues), Output: "attempt output"}
@@ -362,7 +362,7 @@ func TestAgentRunStagnationTriggersExploration(t *testing.T) {
 	}
 	var gotExplorationPrompt bool
 	fakeExecutor := func(ctx context.Context, task worker.Task) worker.Result {
-		if contains(task.Prompt, "Previous approaches have not resolved") {
+		if strings.Contains(task.Prompt, "Previous approaches have not resolved") {
 			gotExplorationPrompt = true
 		}
 		return worker.Result{TaskID: task.ID, File: task.File, Success: false, Error: "failed", Output: "nope"}
@@ -943,15 +943,3 @@ func TestNewAgentEmptyProviderDefaultsToClaude(t *testing.T) {
 	}
 }
 
-func contains(s, substr string) bool {
-	return len(s) >= len(substr) && searchString(s, substr)
-}
-
-func searchString(s, substr string) bool {
-	for i := 0; i <= len(s)-len(substr); i++ {
-		if s[i:i+len(substr)] == substr {
-			return true
-		}
-	}
-	return false
-}

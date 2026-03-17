@@ -9,7 +9,7 @@ import (
 // NewCodexExecutor returns an Executor that invokes the codex CLI.
 // Codex uses --quiet for minimal output and --approval-mode full-auto
 // so it applies fixes without interactive approval.
-func NewCodexExecutor(allowedTools []string) Executor {
+func NewCodexExecutor() Executor {
 	return func(ctx context.Context, task Task) Result {
 		start := time.Now()
 		prompt := task.Prompt

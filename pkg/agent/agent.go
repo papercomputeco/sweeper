@@ -68,7 +68,8 @@ func New(cfg config.Config, opts ...Option) *Agent {
 		pub:      telemetry.NewPublisher(cfg.TelemetryDir),
 	}
 
-	// Resolve provider from registry; fall back to Claude executor if lookup fails.
+	// Resolve provider from registry; fall back to Claude if lookup fails
+	// (cmd/run.go validates before reaching here, so fallback is defensive).
 	provName := cfg.Provider
 	if provName == "" {
 		provName = "claude"
@@ -81,6 +82,7 @@ func New(cfg config.Config, opts ...Option) *Agent {
 			AllowedTools: cfg.AllowedTools,
 		})
 	} else {
+		fmt.Printf("Warning: unknown provider %q, falling back to claude\n", provName)
 		a.providerKind = provider.KindCLI
 		a.executor = worker.NewClaudeExecutor(cfg.AllowedTools)
 	}

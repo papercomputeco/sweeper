@@ -202,3 +202,20 @@ func TestReadFileContentMissing(t *testing.T) {
 		t.Error("expected error message for missing file")
 	}
 }
+
+func TestReadFileContentTruncation(t *testing.T) {
+	dir := t.TempDir()
+	// Write a file larger than maxFileContentSize.
+	bigContent := strings.Repeat("x", maxFileContentSize+1000)
+	if err := os.WriteFile(filepath.Join(dir, "big.go"), []byte(bigContent), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	got := readFileContent(dir, "big.go")
+	if !strings.Contains(got, "truncated") {
+		t.Error("expected truncation notice for large file")
+	}
+	// Should not contain the full content.
+	if strings.Contains(got, bigContent) {
+		t.Error("expected content to be truncated")
+	}
+}

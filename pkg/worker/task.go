@@ -131,14 +131,24 @@ const apiDiffInstructions = "\n\nRespond ONLY with a unified diff that fixes the
 	"Wrap the diff in ```diff and ``` markers. " +
 	"Do not change behavior. Only fix lint issues. Commit nothing."
 
+// maxFileContentSize caps file content included in API prompts to avoid
+// blowing up token limits or producing massive API bills.
+const maxFileContentSize = 100 * 1024
+
 // readFileContent reads the target file for inclusion in API prompts.
 // Returns an empty placeholder on error so prompts degrade gracefully.
+// Files larger than maxFileContentSize are truncated with a notice.
 func readFileContent(dir, file string) string {
 	data, err := os.ReadFile(filepath.Join(dir, file))
 	if err != nil {
 		return fmt.Sprintf("(could not read %s: %v)\n", file, err)
 	}
-	return "```\n" + string(data) + "\n```\n"
+	truncated := ""
+	if len(data) > maxFileContentSize {
+		data = data[:maxFileContentSize]
+		truncated = fmt.Sprintf("\n(truncated — file exceeds %d bytes)\n", maxFileContentSize)
+	}
+	return "```\n" + string(data) + "\n```\n" + truncated
 }
 
 func truncateOutput(s string, maxLen int) string {

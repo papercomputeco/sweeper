@@ -25,7 +25,7 @@ func Get(name string) (Provider, error) {
 	defer mu.RUnlock()
 	p, ok := registry[name]
 	if !ok {
-		return Provider{}, fmt.Errorf("unknown provider %q (available: %v)", name, Available())
+		return Provider{}, fmt.Errorf("unknown provider %q (available: %v)", name, availableLocked())
 	}
 	return p, nil
 }
@@ -34,6 +34,11 @@ func Get(name string) (Provider, error) {
 func Available() []string {
 	mu.RLock()
 	defer mu.RUnlock()
+	return availableLocked()
+}
+
+// availableLocked returns sorted provider names. Caller must hold mu.
+func availableLocked() []string {
 	names := make([]string, 0, len(registry))
 	for name := range registry {
 		names = append(names, name)

@@ -90,7 +90,6 @@ func ollamaChat(ctx context.Context, client *http.Client, cfg OllamaConfig, prom
 	reqBody := ollamaChatRequest{
 		Model: cfg.Model,
 		Messages: []ollamaMessage{
-			{Role: "system", Content: agentPreamble},
 			{Role: "user", Content: prompt},
 		},
 		Stream: false,
@@ -142,6 +141,7 @@ func extractDiff(response string) string {
 }
 
 // applyDiff writes the diff to a temp file and runs `patch -p1` in the target dir.
+// The diff must use paths relative to dir (e.g. a/file.go, b/file.go).
 func applyDiff(dir, diff string) error {
 	tmp, err := os.CreateTemp("", "sweeper-patch-*.diff")
 	if err != nil {
@@ -160,7 +160,7 @@ func applyDiff(dir, diff string) error {
 		return err
 	}
 
-	cmd := exec.Command("patch", "-p1", "--no-backup-if-mismatch", "-i", tmp.Name())
+	cmd := exec.Command("patch", "-p1", "-i", tmp.Name())
 	cmd.Dir = absDir
 	out, err := cmd.CombinedOutput()
 	if err != nil {

@@ -7,7 +7,7 @@ func init() {
 		Name: "codex",
 		Kind: KindCLI,
 		NewExec: func(cfg Config) worker.Executor {
-			return worker.NewCodexExecutor(cfg.AllowedTools)
+			return worker.NewCodexExecutor()
 		},
 	})
 }

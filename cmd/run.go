@@ -66,6 +66,11 @@ Examples:
 				ProviderAPI:    providerAPI,
 			}
 
+			// Validate provider exists before proceeding.
+			if _, err := provider.Get(cfg.Provider); err != nil {
+				return err
+			}
+
 			piped := isPiped()
 			dashArgs := argsAfterDash(cmd, args)
 
