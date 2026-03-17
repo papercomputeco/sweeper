@@ -229,9 +229,11 @@ export default function sweeper({ tool, widget }: any) {
 
       // Parse with three regex patterns matching Go CLI convention
       const golangciPattern =
-        /^(.+?):(\d+):(\d+):\s+(.+)\s+\((\w[\w-]*)\)$/;
+        /^(.+?):(\d+):(\d+):\s+(.+)\s+\(([@\w][\w./@-]*)\)$/;
       const genericPattern = /^(.+?):(\d+):(\d+):\s+(.+)$/;
       const minimalPattern = /^(.+?):(\d+):\s+(.+)$/;
+      const eslintStylishIssue =
+        /^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)\s{2,}(\S+)\s*$/;
 
       const issues: Array<{
         file: string;
@@ -241,46 +243,81 @@ export default function sweeper({ tool, widget }: any) {
         linter: string;
       }> = [];
 
-      for (const line of rawOutput.split("\n")) {
-        const trimmed = line.trim();
-        if (!trimmed) continue;
+      // Try ESLint stylish (multi-line block) format first
+      {
+        let currentFile = "";
+        for (const line of rawOutput.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
+          if (
+            trimmed.includes("problem") &&
+            (trimmed.includes("\u2716") ||
+              (trimmed.includes("error") && trimmed.includes("warning")))
+          )
+            continue;
 
-        let m: RegExpMatchArray | null;
+          const sm = line.match(eslintStylishIssue);
+          if (sm && currentFile) {
+            issues.push({
+              file: currentFile,
+              line: parseInt(sm[1], 10),
+              col: parseInt(sm[2], 10),
+              message: sm[4].trim(),
+              linter: sm[5],
+            });
+            continue;
+          }
 
-        m = trimmed.match(golangciPattern);
-        if (m) {
-          issues.push({
-            file: m[1],
-            line: parseInt(m[2], 10),
-            col: parseInt(m[3], 10),
-            message: m[4],
-            linter: m[5],
-          });
-          continue;
+          // File header: non-indented, non-empty
+          if (line === trimmed && trimmed.length > 0 && !trimmed.startsWith("\u2716")) {
+            currentFile = trimmed;
+          }
         }
+      }
 
-        m = trimmed.match(genericPattern);
-        if (m) {
-          issues.push({
-            file: m[1],
-            line: parseInt(m[2], 10),
-            col: parseInt(m[3], 10),
-            message: m[4],
-            linter: "custom",
-          });
-          continue;
-        }
+      // If stylish parse found nothing, fall back to line-by-line patterns
+      if (issues.length === 0) {
+        for (const line of rawOutput.split("\n")) {
+          const trimmed = line.trim();
+          if (!trimmed) continue;
 
-        m = trimmed.match(minimalPattern);
-        if (m) {
-          issues.push({
-            file: m[1],
-            line: parseInt(m[2], 10),
-            col: 0,
-            message: m[3],
-            linter: "custom",
-          });
-          continue;
+          let m: RegExpMatchArray | null;
+
+          m = trimmed.match(golangciPattern);
+          if (m) {
+            issues.push({
+              file: m[1],
+              line: parseInt(m[2], 10),
+              col: parseInt(m[3], 10),
+              message: m[4],
+              linter: m[5],
+            });
+            continue;
+          }
+
+          m = trimmed.match(genericPattern);
+          if (m) {
+            issues.push({
+              file: m[1],
+              line: parseInt(m[2], 10),
+              col: parseInt(m[3], 10),
+              message: m[4],
+              linter: "custom",
+            });
+            continue;
+          }
+
+          m = trimmed.match(minimalPattern);
+          if (m) {
+            issues.push({
+              file: m[1],
+              line: parseInt(m[2], 10),
+              col: 0,
+              message: m[3],
+              linter: "custom",
+            });
+            continue;
+          }
         }
       }
 
