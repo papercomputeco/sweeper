@@ -30,11 +30,13 @@ func NewClaudeExecutor(allowedTools []string) Executor {
 			return Result{
 				TaskID: task.ID, File: task.File, Success: false,
 				Output: string(out), Error: err.Error(), Duration: duration,
+				Provider: "claude",
 			}
 		}
 		return Result{
 			TaskID: task.ID, File: task.File, Success: true,
 			Output: string(out), Duration: duration, IssuesFix: len(task.Issues),
+			Provider: "claude",
 		}
 	}
 }
