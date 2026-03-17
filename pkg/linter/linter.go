@@ -27,7 +27,10 @@ type ParseResult struct {
 
 var (
 	// golangci-lint format: file:line:col: message (linter)
-	golangciPattern = regexp.MustCompile(`^(.+?):(\d+):(\d+):\s+(.+)\s+\((\w[\w-]*)\)$`)
+	// Linter name supports @-scoped rules like @typescript-eslint/no-unused-vars
+	golangciPattern = regexp.MustCompile(`^(.+?):(\d+):(\d+):\s+(.+)\s+\(([@\w][\w./@-]*)\)$`)
+	// ESLint stylish issue line: "  line:col  error|warning  message  rule-name"
+	eslintStylishIssue = regexp.MustCompile(`^\s+(\d+):(\d+)\s+(error|warning)\s+(.+?)\s{2,}(\S+)\s*$`)
 	// generic file:line:col: message
 	genericPattern = regexp.MustCompile(`^(.+?):(\d+):(\d+):\s+(.+)$`)
 	// minimal file:line: message
@@ -36,6 +39,14 @@ var (
 
 func ParseOutput(raw string) ParseResult {
 	result := ParseResult{RawOutput: raw}
+
+	// Try ESLint stylish (multi-line block) format first
+	if issues := parseESLintStylish(raw); len(issues) > 0 {
+		result.Issues = issues
+		result.Parsed = true
+		return result
+	}
+
 	scanner := bufio.NewScanner(strings.NewReader(raw))
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -57,6 +68,53 @@ func ParseOutput(raw string) ParseResult {
 	}
 	result.Parsed = len(result.Issues) > 0
 	return result
+}
+
+// parseESLintStylish parses ESLint's default "stylish" multi-line format:
+//
+//	/path/to/file.js
+//	   2:10  error  'foo' is not defined  no-undef
+//	   5:1   warning  Unexpected console statement  no-console
+//
+//	✖ 2 problems (1 error, 1 warning)
+func parseESLintStylish(raw string) []Issue {
+	var issues []Issue
+	var currentFile string
+
+	for _, line := range strings.Split(raw, "\n") {
+		// Skip empty lines and summary lines (e.g. "✖ 2 problems...")
+		if strings.TrimSpace(line) == "" {
+			continue
+		}
+		if strings.Contains(line, "problem") && (strings.Contains(line, "✖") || strings.Contains(line, "error") && strings.Contains(line, "warning")) {
+			continue
+		}
+
+		// Issue line: indented with "line:col  severity  message  rule"
+		if m := eslintStylishIssue.FindStringSubmatch(line); m != nil {
+			if currentFile == "" {
+				continue
+			}
+			lineNum, _ := strconv.Atoi(m[1])
+			col, _ := strconv.Atoi(m[2])
+			issues = append(issues, Issue{
+				File:    currentFile,
+				Line:    lineNum,
+				Col:     col,
+				Message: strings.TrimSpace(m[4]),
+				Linter:  m[5],
+			})
+			continue
+		}
+
+		// File header: non-indented line that looks like a path
+		trimmed := strings.TrimSpace(line)
+		if line == trimmed && len(trimmed) > 0 && !strings.HasPrefix(trimmed, "✖") {
+			currentFile = trimmed
+		}
+	}
+
+	return issues
 }
 
 func parseGolangci(line string) (Issue, bool) {

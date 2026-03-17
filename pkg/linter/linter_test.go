@@ -114,6 +114,65 @@ func TestParseOutputESLint(t *testing.T) {
 	}
 }
 
+func TestParseOutputESLintStylish(t *testing.T) {
+	data, err := os.ReadFile("../../testdata/sample_eslint_stylish_output.txt")
+	if err != nil {
+		t.Fatal(err)
+	}
+	result := ParseOutput(string(data))
+	if !result.Parsed {
+		t.Fatal("expected Parsed to be true for ESLint stylish output")
+	}
+	if len(result.Issues) != 4 {
+		t.Fatalf("expected 4 issues, got %d", len(result.Issues))
+	}
+
+	// Verify first issue
+	first := result.Issues[0]
+	if first.File != "src/App.tsx" {
+		t.Errorf("expected file src/App.tsx, got %s", first.File)
+	}
+	if first.Line != 2 {
+		t.Errorf("expected line 2, got %d", first.Line)
+	}
+	if first.Col != 10 {
+		t.Errorf("expected col 10, got %d", first.Col)
+	}
+	if first.Linter != "@typescript-eslint/no-unused-vars" {
+		t.Errorf("expected linter @typescript-eslint/no-unused-vars, got %s", first.Linter)
+	}
+
+	// Verify issue from a different file
+	third := result.Issues[2]
+	if third.File != "src/components/Header.tsx" {
+		t.Errorf("expected file src/components/Header.tsx, got %s", third.File)
+	}
+	if third.Linter != "@typescript-eslint/explicit-function-return-type" {
+		t.Errorf("expected linter @typescript-eslint/explicit-function-return-type, got %s", third.Linter)
+	}
+
+	// Verify last issue uses simple rule name
+	last := result.Issues[3]
+	if last.Linter != "no-console" {
+		t.Errorf("expected linter no-console, got %s", last.Linter)
+	}
+}
+
+func TestParseOutputESLintStylishOrphanLine(t *testing.T) {
+	// Issue line appearing before any file header should be skipped
+	raw := "  1:5  error  Unexpected var  no-var\n\nsrc/app.ts\n  3:1  warning  Missing semicolon  semi\n"
+	result := ParseOutput(raw)
+	if !result.Parsed {
+		t.Fatal("expected Parsed to be true")
+	}
+	if len(result.Issues) != 1 {
+		t.Fatalf("expected 1 issue (orphan skipped), got %d", len(result.Issues))
+	}
+	if result.Issues[0].File != "src/app.ts" {
+		t.Errorf("expected file src/app.ts, got %s", result.Issues[0].File)
+	}
+}
+
 func TestParseOutputPylint(t *testing.T) {
 	data, err := os.ReadFile("../../testdata/sample_pylint_output.txt")
 	if err != nil {
