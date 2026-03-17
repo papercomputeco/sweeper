@@ -4,11 +4,13 @@ import (
 	"context"
 	"errors"
 	"os"
+	"strings"
 	"testing"
 
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
 	"github.com/papercomputeco/sweeper/pkg/loop"
+	"github.com/papercomputeco/sweeper/pkg/provider"
 	"github.com/papercomputeco/sweeper/pkg/worker"
 )
 
@@ -795,6 +797,149 @@ func TestAgentRunSessionDocError(t *testing.T) {
 	_, err := a.Run(context.Background())
 	if err != nil {
 		t.Fatal(err)
+	}
+}
+
+func TestBuildPromptCLIDefault(t *testing.T) {
+	a := &Agent{providerKind: provider.KindCLI}
+	task := worker.Task{
+		File:   "main.go",
+		Dir:    t.TempDir(),
+		Issues: []linter.Issue{{File: "main.go", Line: 1, Message: "unused", Linter: "revive"}},
+	}
+	got := a.buildPrompt(task, loop.StrategyStandard, "")
+	if !strings.Contains(got, "main.go") {
+		t.Error("expected file reference")
+	}
+	// CLI default should NOT contain "unified diff" instructions
+	if strings.Contains(got, "unified diff") {
+		t.Error("CLI prompt should not ask for unified diff")
+	}
+}
+
+func TestBuildPromptCLIRetry(t *testing.T) {
+	a := &Agent{providerKind: provider.KindCLI}
+	task := worker.Task{
+		File:   "main.go",
+		Dir:    t.TempDir(),
+		Issues: []linter.Issue{{File: "main.go", Line: 1, Message: "unused", Linter: "revive"}},
+	}
+	got := a.buildPrompt(task, loop.StrategyRetry, "prior output")
+	if !strings.Contains(got, "different approach") {
+		t.Error("expected retry instructions")
+	}
+}
+
+func TestBuildPromptCLIExploration(t *testing.T) {
+	a := &Agent{providerKind: provider.KindCLI}
+	task := worker.Task{
+		File:   "main.go",
+		Dir:    t.TempDir(),
+		Issues: []linter.Issue{{File: "main.go", Line: 1, Message: "unused", Linter: "revive"}},
+	}
+	got := a.buildPrompt(task, loop.StrategyExploration, "prior output")
+	if !strings.Contains(got, "refactoring") {
+		t.Error("expected exploration instructions")
+	}
+}
+
+func TestBuildPromptAPIDefault(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/main.go", []byte("package main\n"), 0o644)
+	a := &Agent{providerKind: provider.KindAPI}
+	task := worker.Task{
+		File:   "main.go",
+		Dir:    dir,
+		Issues: []linter.Issue{{File: "main.go", Line: 1, Message: "unused", Linter: "revive"}},
+	}
+	got := a.buildPrompt(task, loop.StrategyStandard, "")
+	if !strings.Contains(got, "unified diff") {
+		t.Error("API prompt should ask for unified diff")
+	}
+	if !strings.Contains(got, "package main") {
+		t.Error("API prompt should include file content")
+	}
+}
+
+func TestBuildPromptAPIRetry(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/main.go", []byte("package main\n"), 0o644)
+	a := &Agent{providerKind: provider.KindAPI}
+	task := worker.Task{
+		File:   "main.go",
+		Dir:    dir,
+		Issues: []linter.Issue{{File: "main.go", Line: 1, Message: "unused", Linter: "revive"}},
+	}
+	got := a.buildPrompt(task, loop.StrategyRetry, "prior output")
+	if !strings.Contains(got, "different approach") {
+		t.Error("expected retry instructions")
+	}
+	if !strings.Contains(got, "unified diff") {
+		t.Error("API retry prompt should ask for unified diff")
+	}
+}
+
+func TestBuildPromptAPIExploration(t *testing.T) {
+	dir := t.TempDir()
+	os.WriteFile(dir+"/main.go", []byte("package main\n"), 0o644)
+	a := &Agent{providerKind: provider.KindAPI}
+	task := worker.Task{
+		File:   "main.go",
+		Dir:    dir,
+		Issues: []linter.Issue{{File: "main.go", Line: 1, Message: "unused", Linter: "revive"}},
+	}
+	got := a.buildPrompt(task, loop.StrategyExploration, "prior output")
+	if !strings.Contains(got, "refactoring") {
+		t.Error("expected exploration instructions")
+	}
+	if !strings.Contains(got, "unified diff") {
+		t.Error("API exploration prompt should ask for unified diff")
+	}
+}
+
+func TestNewAgentFallbackOnUnknownProvider(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		Provider:     "nonexistent-provider-xyz",
+		AllowedTools: []string{"Read"},
+	}
+	a := New(cfg)
+	// Should fall back to KindCLI and Claude executor without panicking
+	if a.providerKind != provider.KindCLI {
+		t.Errorf("expected KindCLI fallback, got %d", a.providerKind)
+	}
+	if a.executor == nil {
+		t.Error("executor should not be nil")
+	}
+}
+
+func TestNewAgentWithProviderFromRegistry(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		Provider:     "claude",
+		AllowedTools: []string{"Read"},
+	}
+	a := New(cfg)
+	if a.providerKind != provider.KindCLI {
+		t.Errorf("expected KindCLI for claude, got %d", a.providerKind)
+	}
+}
+
+func TestNewAgentEmptyProviderDefaultsToClaude(t *testing.T) {
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		Provider:     "",
+		AllowedTools: []string{"Read"},
+	}
+	a := New(cfg)
+	if a.providerKind != provider.KindCLI {
+		t.Errorf("expected KindCLI for empty provider, got %d", a.providerKind)
 	}
 }
 

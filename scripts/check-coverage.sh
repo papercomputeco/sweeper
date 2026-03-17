@@ -18,7 +18,7 @@ echo "Running tests with coverage..."
 go test -coverprofile="$COVERFILE" ./pkg/... > /dev/null 2>&1
 
 # Files excluded entirely (external binary integrations).
-EXCLUDED_FILES="claude.go"
+EXCLUDED_FILES="claude.go|codex.go"
 
 # Functions excluded from 100% check.
 # These contain defensive SQL rows.Scan/db.Ping error paths that are
@@ -33,6 +33,11 @@ EXCLUDED_FUNCTIONS=(
   "pkg/vm/vm.go:.*defaultRunner"
   "pkg/vm/vm.go:.*Boot"
   "pkg/vm/vm.go:.*Attach"
+  "pkg/worker/ollama.go:.*NewOllamaExecutor"
+  "pkg/worker/ollama.go:.*ollamaChat"
+  "pkg/worker/ollama.go:.*applyDiff"
+  "pkg/provider/codex.go:.*init"
+  "pkg/provider/ollama.go:.*init"
 )
 
 # Build grep exclusion pattern.

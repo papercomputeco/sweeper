@@ -67,7 +67,7 @@ func TestClaudeExecutorUsesTaskPrompt(t *testing.T) {
 		},
 		Prompt: customPrompt,
 	}
-	result := ClaudeExecutor(context.Background(), task)
+	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
@@ -93,7 +93,7 @@ func TestClaudeExecutorFallsBackToBuildPrompt(t *testing.T) {
 		},
 		// Prompt intentionally left empty
 	}
-	result := ClaudeExecutor(context.Background(), task)
+	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
@@ -119,7 +119,7 @@ func TestClaudeExecutorSuccess(t *testing.T) {
 			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
 		},
 	}
-	result := ClaudeExecutor(context.Background(), task)
+	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
 	if !result.Success {
 		t.Errorf("expected success, got error: %s", result.Error)
 	}
@@ -147,7 +147,7 @@ func TestClaudeExecutorError(t *testing.T) {
 			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
 		},
 	}
-	result := ClaudeExecutor(context.Background(), task)
+	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
 	if result.Success {
 		t.Error("expected failure")
 	}

@@ -5,7 +5,7 @@ description: Agent-powered code maintenance with parallel sub-agents, VM isolati
 
 # Sweeper - Agent-Powered Code Maintenance
 
-You orchestrate the **sweeper** CLI to run parallel Claude Code sub-agents against a codebase with optional VM isolation. While lint fixing is the default, the same loop handles test repairs, dependency migrations, refactoring, and any task where you can run a command, parse issues, and dispatch agents to fix them. Tapes records every sub-agent session, enabling you to learn from past runs and optimize token spend.
+You orchestrate the **sweeper** CLI to run parallel AI sub-agents against a codebase with optional VM isolation and swappable providers (Claude, Codex, Ollama/local models). While lint fixing is the default, the same loop handles test repairs, dependency migrations, refactoring, and any task where you can run a command, parse issues, and dispatch agents to fix them. Tapes records every sub-agent session, enabling you to learn from past runs and optimize token spend.
 
 ## Prerequisites
 
@@ -63,7 +63,7 @@ Use the CLI to orchestrate the full loop. The CLI handles linting, parsing, para
 ### Basic runs
 
 ```bash
-# Default: golangci-lint with 3 parallel agents
+# Default: golangci-lint with claude (default provider)
 sweeper run
 
 # Custom linter
@@ -78,6 +78,21 @@ sweeper run --vm -c 5 --max-rounds 3 -- npx eslint --quiet .
 # Preview what would be fixed
 sweeper run --dry-run
 ```
+
+### Alternative providers
+
+```bash
+# Use OpenAI Codex CLI instead of Claude
+sweeper run --provider codex -- npm run lint
+
+# Use a local Ollama model (no API key needed)
+sweeper run --provider ollama --model qwen2.5-coder:7b
+
+# Ollama with custom API base
+sweeper run --provider ollama --model codellama --api-base http://gpu-server:11434
+```
+
+Available providers: `claude` (default, CLI), `codex` (CLI), `ollama` (API). CLI providers have built-in file tools. API providers include file content in the prompt and apply returned diffs. VM isolation (`--vm`) only works with CLI providers.
 
 ### VM isolation (recommended for production)
 

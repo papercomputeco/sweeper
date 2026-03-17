@@ -12,6 +12,7 @@ import (
 	"github.com/papercomputeco/sweeper/pkg/agent"
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
+	"github.com/papercomputeco/sweeper/pkg/provider"
 	"github.com/papercomputeco/sweeper/pkg/vm"
 	"github.com/papercomputeco/sweeper/pkg/worker"
 	"github.com/spf13/cobra"
@@ -21,9 +22,13 @@ func newRunCmd() *cobra.Command {
 	var dryRun bool
 	var maxRounds int
 	var staleThreshold int
+	var allowedTools []string
 	var useVM bool
 	var vmName string
 	var vmJcard string
+	var providerName string
+	var providerModel string
+	var providerAPI string
 	cmd := &cobra.Command{
 		Use:   "run [-- command ...]",
 		Short: "Run sweeper against target directory",
@@ -42,15 +47,23 @@ Examples:
 			if clamped != concurrency {
 				fmt.Printf("Concurrency clamped to %d (max %d)\n", clamped, config.MaxConcurrency)
 			}
+			tools := append([]string{}, config.DefaultAllowedTools...)
+			if len(allowedTools) > 0 {
+				tools = append(tools, allowedTools...)
+			}
 			cfg := config.Config{
 				TargetDir:      targetDir,
 				Concurrency:    clamped,
 				RateLimit:      rateLimit,
+				AllowedTools:   tools,
 				TelemetryDir:   ".sweeper/telemetry",
 				DryRun:         dryRun,
 				NoTapes:        noTapes,
 				MaxRounds:      maxRounds,
 				StaleThreshold: staleThreshold,
+				Provider:       providerName,
+				ProviderModel:  providerModel,
+				ProviderAPI:    providerAPI,
 			}
 
 			piped := isPiped()
@@ -91,6 +104,17 @@ Examples:
 			cfg.VMName = vmName
 			cfg.VMJcard = vmJcard
 
+			// Validate: --vm is only compatible with CLI providers.
+			if useVM {
+				p, err := provider.Get(cfg.Provider)
+				if err != nil {
+					return fmt.Errorf("provider %q: %w", cfg.Provider, err)
+				}
+				if p.Kind != provider.KindCLI {
+					return fmt.Errorf("--vm is only compatible with CLI providers (got %q)", cfg.Provider)
+				}
+			}
+
 			if useVM {
 				absTarget, _ := filepath.Abs(cfg.TargetDir)
 				if cfg.VMName != "" {
@@ -127,12 +151,16 @@ Examples:
 			return nil
 		},
 	}
+	cmd.Flags().StringSliceVar(&allowedTools, "allowed-tools", nil, "additional tools for sub-agents (e.g. 'Bash(npm:*),Bash(cargo:*)')")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be fixed without making changes")
 	cmd.Flags().IntVar(&maxRounds, "max-rounds", 1, "maximum retry rounds (1 = single pass)")
 	cmd.Flags().IntVar(&staleThreshold, "stale-threshold", 2, "consecutive non-improving rounds before exploration mode")
 	cmd.Flags().BoolVar(&useVM, "vm", false, "boot ephemeral stereOS VM, teardown on exit")
 	cmd.Flags().StringVar(&vmName, "vm-name", "", "use existing VM by name (no managed lifecycle, implies --vm)")
 	cmd.Flags().StringVar(&vmJcard, "vm-jcard", "", "custom jcard.toml path (implies --vm)")
+	cmd.Flags().StringVar(&providerName, "provider", "claude", "AI provider (claude, codex, ollama)")
+	cmd.Flags().StringVar(&providerModel, "model", "", "model name for the provider (e.g. qwen2.5-coder:7b)")
+	cmd.Flags().StringVar(&providerAPI, "api-base", "", "API base URL for API providers (e.g. http://localhost:11434)")
 	return cmd
 }
 

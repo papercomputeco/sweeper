@@ -3,24 +3,22 @@ package worker
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
-// NewClaudeExecutor returns an Executor that invokes claude with the given
-// allowed tools. This lets callers configure which tools sub-agents can use
-// without reverting to --dangerously-skip-permissions.
-func NewClaudeExecutor(allowedTools []string) Executor {
-	toolsArg := strings.Join(allowedTools, ",")
+// NewCodexExecutor returns an Executor that invokes the codex CLI.
+// Codex uses --quiet for minimal output and --approval-mode full-auto
+// so it applies fixes without interactive approval.
+func NewCodexExecutor(allowedTools []string) Executor {
 	return func(ctx context.Context, task Task) Result {
 		start := time.Now()
 		prompt := task.Prompt
 		if prompt == "" {
 			prompt = BuildPrompt(task)
 		}
-		cmd := exec.CommandContext(ctx, "claude",
-			"--print",
-			"--allowedTools", toolsArg,
+		cmd := exec.CommandContext(ctx, "codex",
+			"--quiet",
+			"--approval-mode", "full-auto",
 			prompt,
 		)
 		cmd.Dir = task.Dir

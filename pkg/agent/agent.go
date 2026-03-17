@@ -11,6 +11,7 @@ import (
 	"github.com/papercomputeco/sweeper/pkg/linter"
 	"github.com/papercomputeco/sweeper/pkg/loop"
 	"github.com/papercomputeco/sweeper/pkg/planner"
+	"github.com/papercomputeco/sweeper/pkg/provider"
 	"github.com/papercomputeco/sweeper/pkg/session"
 	"github.com/papercomputeco/sweeper/pkg/tapes"
 	"github.com/papercomputeco/sweeper/pkg/telemetry"
@@ -33,12 +34,13 @@ type Summary struct {
 }
 
 type Agent struct {
-	cfg         config.Config
-	linterFn    LinterFunc
-	executor    worker.Executor
-	pub         *telemetry.Publisher
-	vm          VMManager
-	sessionPath string
+	cfg          config.Config
+	linterFn     LinterFunc
+	executor     worker.Executor
+	providerKind provider.Kind
+	pub          *telemetry.Publisher
+	vm           VMManager
+	sessionPath  string
 }
 
 type Option func(*Agent)
@@ -63,9 +65,26 @@ func New(cfg config.Config, opts ...Option) *Agent {
 	a := &Agent{
 		cfg:      cfg,
 		linterFn: defaultLinterFunc,
-		executor: worker.ClaudeExecutor,
 		pub:      telemetry.NewPublisher(cfg.TelemetryDir),
 	}
+
+	// Resolve provider from registry; fall back to Claude executor if lookup fails.
+	provName := cfg.Provider
+	if provName == "" {
+		provName = "claude"
+	}
+	if p, err := provider.Get(provName); err == nil {
+		a.providerKind = p.Kind
+		a.executor = p.NewExec(provider.Config{
+			Model:        cfg.ProviderModel,
+			APIBase:      cfg.ProviderAPI,
+			AllowedTools: cfg.AllowedTools,
+		})
+	} else {
+		a.providerKind = provider.KindCLI
+		a.executor = worker.NewClaudeExecutor(cfg.AllowedTools)
+	}
+
 	for _, opt := range opts {
 		opt(a)
 	}
@@ -171,14 +190,9 @@ func (a *Agent) runParsed(ctx context.Context, result linter.ParseResult, linter
 				Dir:    a.cfg.TargetDir,
 				Issues: ft.Issues,
 			}
-			switch strategy {
-			case loop.StrategyRetry:
-				tasks[i].Prompt = worker.BuildRetryPrompt(tasks[i], fh.LastOutput())
-			case loop.StrategyExploration:
-				tasks[i].Prompt = worker.BuildExplorationPrompt(tasks[i], fh.LastOutput())
+			tasks[i].Prompt = a.buildPrompt(tasks[i], strategy, fh.LastOutput())
+			if strategy == loop.StrategyExploration {
 				explorationAttempted[ft.File] = true
-			default:
-				tasks[i].Prompt = worker.BuildPrompt(tasks[i])
 			}
 		}
 
@@ -397,6 +411,28 @@ func (a *Agent) runRaw(ctx context.Context, result linter.ParseResult, linterNam
 
 	fmt.Printf("Results: %d fixed, %d failed out of %d tasks.\n", summary.Fixed, summary.Failed, summary.Tasks)
 	return summary, nil
+}
+
+// buildPrompt selects the appropriate prompt builder based on provider kind and strategy.
+func (a *Agent) buildPrompt(task worker.Task, strategy loop.Strategy, priorOutput string) string {
+	if a.providerKind == provider.KindAPI {
+		switch strategy {
+		case loop.StrategyRetry:
+			return worker.BuildAPIRetryPrompt(task, priorOutput)
+		case loop.StrategyExploration:
+			return worker.BuildAPIExplorationPrompt(task, priorOutput)
+		default:
+			return worker.BuildAPIPrompt(task)
+		}
+	}
+	switch strategy {
+	case loop.StrategyRetry:
+		return worker.BuildRetryPrompt(task, priorOutput)
+	case loop.StrategyExploration:
+		return worker.BuildExplorationPrompt(task, priorOutput)
+	default:
+		return worker.BuildPrompt(task)
+	}
 }
 
 func safeHistory(fh *loop.FileHistory) loop.FileHistory {

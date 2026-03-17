@@ -51,6 +51,18 @@ func TestClampConcurrency(t *testing.T) {
 	}
 }
 
+func TestDefaultAllowedTools(t *testing.T) {
+	cfg := Default()
+	if len(cfg.AllowedTools) != len(DefaultAllowedTools) {
+		t.Errorf("expected %d default allowed tools, got %d", len(DefaultAllowedTools), len(cfg.AllowedTools))
+	}
+	// Verify it's a copy, not a shared slice
+	cfg.AllowedTools = append(cfg.AllowedTools, "Bash(npm:*)")
+	if len(Default().AllowedTools) != len(DefaultAllowedTools) {
+		t.Error("modifying config should not mutate DefaultAllowedTools")
+	}
+}
+
 func TestDefaultConfigHasVMDisabled(t *testing.T) {
 	cfg := Default()
 	if cfg.VM {

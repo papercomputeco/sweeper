@@ -1,8 +1,8 @@
 # 🧹 Sweeper Agent
 
-Multi-threaded code maintenance with resource isolated subagents.
+Multi-threaded code maintenance with resource isolated subagents and swappable AI providers.
 
-Sweeper dispatches parallel Claude Code agents to fix lint issues across your codebase, each running in its own isolated environment. It groups issues by file, fans out concurrent fixes, escalates strategy when fixes stall, and records outcomes so it learns what works. With VM isolation enabled, each sub-agent runs inside a dedicated stereOS virtual machine with its own CPU, memory, and secrets boundary, safe to scale to 10+ concurrent agents.
+Sweeper dispatches parallel AI agents to fix lint issues across your codebase, each running in its own isolated environment. Providers are swappable: use Claude Code (default), OpenAI Codex, or local models via Ollama. It groups issues by file, fans out concurrent fixes, escalates strategy when fixes stall, and records outcomes so it learns what works. With VM isolation enabled, each sub-agent runs inside a dedicated stereOS virtual machine with its own CPU, memory, and secrets boundary, safe to scale to 10+ concurrent agents.
 
 ```
                         sweeper run --vm -c 5
@@ -65,7 +65,9 @@ The core binary. All integrations below (except Pi) require this.
 
 ```bash
 go install github.com/papercomputeco/sweeper@latest
-sweeper run                              # default: golangci-lint
+sweeper run                              # default: golangci-lint with claude
+sweeper run --provider codex             # use OpenAI Codex CLI instead
+sweeper run --provider ollama --model qwen2.5-coder:7b  # local model via Ollama
 sweeper run --vm -c 3 --max-rounds 3    # VM isolation, 3 agents, 3 rounds
 sweeper run -- npm run lint              # any linter
 sweeper observe                          # review success rates + token spend
@@ -122,6 +124,28 @@ pi install sweeper
 
 This gives you `init_sweep`, `run_linter`, and `log_result` tools plus a dashboard widget. To start a sweep, tell Pi: "Sweep this project for lint issues"
 
+## Providers
+
+Sweeper supports swappable AI providers. Well-scoped tasks like lint fixes can run on smaller, cheaper models.
+
+| Provider | Kind | Requires | Example |
+|----------|------|----------|---------|
+| `claude` (default) | CLI | `claude` CLI installed | `sweeper run` |
+| `codex` | CLI | `codex` CLI installed | `sweeper run --provider codex` |
+| `ollama` | API | Ollama running locally | `sweeper run --provider ollama --model qwen2.5-coder:7b` |
+
+**CLI providers** (claude, codex) have built-in file tools. Sweeper sends a prompt and the harness reads/writes files directly.
+
+**API providers** (ollama) are text-in, text-out. Sweeper includes file content in the prompt and applies the returned unified diff via `patch`.
+
+### Provider flags
+
+- `--provider <name>` — AI provider to use (default: `claude`)
+- `--model <name>` — Model override for the provider (e.g. `qwen2.5-coder:7b` for ollama)
+- `--api-base <url>` — API base URL for API providers (default: `http://localhost:11434` for ollama)
+
+VM isolation (`--vm`) is only compatible with CLI providers.
+
 ## Examples
 
 Sweeper works with any command that produces output, not just linters.
@@ -141,6 +165,15 @@ sweeper run -- ./scripts/check-slop.sh
 
 # Higher concurrency with VM isolation
 sweeper run --vm -c 5 --max-rounds 3 -- npm run lint
+
+# Use Codex CLI
+sweeper run --provider codex -- npm run lint
+
+# Use a local Ollama model
+sweeper run --provider ollama --model qwen2.5-coder:7b
+
+# Ollama with a custom API base
+sweeper run --provider ollama --model codellama --api-base http://gpu-server:11434
 ```
 
 When using sweeper as a skill, you can pass arbitrary goals to the agent:
