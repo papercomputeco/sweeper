@@ -60,3 +60,34 @@ func ClampConcurrency(n int) int {
 	}
 	return n
 }
+
+// FromTOML converts a TOMLConfig into the runtime Config struct.
+// Note: TargetDir is not populated from TOML and must be set by the caller
+// (it comes from the --target CLI flag or defaults to ".").
+func FromTOML(tc TOMLConfig) Config {
+	rateLimit, err := tc.Run.ParseRateLimit()
+	if err != nil {
+		rateLimit = 2 * time.Second
+	}
+	tools := tc.Provider.AllowedTools
+	if len(tools) == 0 {
+		tools = append([]string{}, DefaultAllowedTools...)
+	}
+	return Config{
+		TargetDir:      ".",
+		Concurrency:    ClampConcurrency(tc.Run.Concurrency),
+		RateLimit:      rateLimit,
+		AllowedTools:   tools,
+		TelemetryDir:   tc.Telemetry.Dir,
+		DryRun:         tc.Run.DryRun,
+		NoTapes:        tc.Run.NoTapes,
+		MaxRounds:      tc.Run.MaxRounds,
+		StaleThreshold: tc.Run.StaleThreshold,
+		VM:             tc.VM.Enabled,
+		VMName:         tc.VM.Name,
+		VMJcard:        tc.VM.Jcard,
+		Provider:       tc.Provider.Name,
+		ProviderModel:  tc.Provider.Model,
+		ProviderAPI:    tc.Provider.APIBase,
+	}
+}

@@ -1,6 +1,7 @@
 package telemetry
 
 import (
+	"context"
 	"encoding/json"
 	"os"
 	"path/filepath"
@@ -10,7 +11,7 @@ import (
 
 func TestPublishWritesJSONL(t *testing.T) {
 	dir := t.TempDir()
-	pub := NewPublisher(dir)
+	pub := NewJSONLPublisher(dir)
 	defer func() { _ = pub.Close() }()
 	event := Event{
 		Timestamp: time.Now(),
@@ -21,7 +22,7 @@ func TestPublishWritesJSONL(t *testing.T) {
 			"issues":  3,
 		},
 	}
-	if err := pub.Publish(event); err != nil {
+	if err := pub.Publish(context.Background(), event); err != nil {
 		t.Fatal(err)
 	}
 	if err := pub.Close(); err != nil {
@@ -43,14 +44,14 @@ func TestPublishWritesJSONL(t *testing.T) {
 
 func TestPublishMultipleReusesFile(t *testing.T) {
 	dir := t.TempDir()
-	pub := NewPublisher(dir)
+	pub := NewJSONLPublisher(dir)
 	defer func() { _ = pub.Close() }()
 	e1 := Event{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"file": "a.go"}}
 	e2 := Event{Timestamp: time.Now(), Type: "fix_attempt", Data: map[string]any{"file": "b.go"}}
-	if err := pub.Publish(e1); err != nil {
+	if err := pub.Publish(context.Background(), e1); err != nil {
 		t.Fatal(err)
 	}
-	if err := pub.Publish(e2); err != nil {
+	if err := pub.Publish(context.Background(), e2); err != nil {
 		t.Fatal(err)
 	}
 	if err := pub.Close(); err != nil {
@@ -63,9 +64,9 @@ func TestPublishMultipleReusesFile(t *testing.T) {
 }
 
 func TestPublishInvalidDir(t *testing.T) {
-	pub := NewPublisher("/nonexistent/path/that/cannot/exist")
+	pub := NewJSONLPublisher("/nonexistent/path/that/cannot/exist")
 	defer func() { _ = pub.Close() }()
-	err := pub.Publish(Event{Timestamp: time.Now(), Type: "test"})
+	err := pub.Publish(context.Background(), Event{Timestamp: time.Now(), Type: "test"})
 	if err == nil {
 		t.Error("expected error when publishing to invalid directory")
 	}
@@ -73,8 +74,7 @@ func TestPublishInvalidDir(t *testing.T) {
 
 func TestCloseWithoutPublish(t *testing.T) {
 	dir := t.TempDir()
-	pub := NewPublisher(dir)
-	// Close without ever publishing — should not error.
+	pub := NewJSONLPublisher(dir)
 	if err := pub.Close(); err != nil {
 		t.Errorf("unexpected error closing without publish: %v", err)
 	}
@@ -82,16 +82,29 @@ func TestCloseWithoutPublish(t *testing.T) {
 
 func TestPublishMarshalError(t *testing.T) {
 	dir := t.TempDir()
-	pub := NewPublisher(dir)
+	pub := NewJSONLPublisher(dir)
 	defer func() { _ = pub.Close() }()
-	// Channels are not JSON-serializable.
 	event := Event{
 		Timestamp: time.Now(),
 		Type:      "test",
 		Data:      map[string]any{"bad": make(chan int)},
 	}
-	err := pub.Publish(event)
+	err := pub.Publish(context.Background(), event)
 	if err == nil {
 		t.Error("expected error when marshaling channel")
+	}
+}
+
+func TestJSONLPublisherImplementsInterface(t *testing.T) {
+	dir := t.TempDir()
+	var pub Publisher = NewJSONLPublisher(dir)
+	defer func() { _ = pub.Close() }()
+	err := pub.Publish(context.Background(), Event{
+		Timestamp: time.Now(),
+		Type:      "test",
+		Data:      map[string]any{"ok": true},
+	})
+	if err != nil {
+		t.Fatal(err)
 	}
 }

@@ -39,6 +39,11 @@ EXCLUDED_FUNCTIONS=(
   "pkg/provider/codex.go:.*init"
   "pkg/provider/ollama.go:.*init"
   "pkg/linter/linter.go:.*normalizeIssuePaths"
+  "pkg/dotdir/manager.go:.*Target"
+  "pkg/dotdir/manager.go:.*TargetIn"
+  "pkg/telemetry/jsonl.go:.*NewPublisher"
+  "pkg/telemetry/confluent/confluent.go:.*NewPublisher"
+  "pkg/telemetry/confluent/confluent.go:.*Publish"
 )
 
 # Build grep exclusion pattern.

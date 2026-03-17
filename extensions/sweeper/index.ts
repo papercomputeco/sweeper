@@ -36,6 +36,22 @@ function todayFileName(): string {
 
 function telemetryDir(targetDir: string): string {
   const path = require("path");
+  const fs = require("fs");
+
+  // Check config.toml for custom telemetry dir
+  const configPath = path.join(targetDir, ".sweeper", "config.toml");
+  if (fs.existsSync(configPath)) {
+    try {
+      const content = fs.readFileSync(configPath, "utf-8").replace(/\r\n/g, "\n");
+      // Simple TOML extraction for telemetry.dir (handles comments between section and key)
+      const match = content.match(/^\[telemetry\]\s*\n(?:(?:#[^\n]*|[^\[]*?)\n)*?dir\s*=\s*"([^"]+)"/m);
+      if (match) {
+        return path.isAbsolute(match[1]) ? match[1] : path.join(targetDir, match[1]);
+      }
+    } catch {
+      // Fall through to default
+    }
+  }
   return path.join(targetDir, ".sweeper", "telemetry");
 }
 

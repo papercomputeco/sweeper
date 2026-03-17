@@ -11,6 +11,7 @@ import (
 	"github.com/papercomputeco/sweeper/pkg/linter"
 	"github.com/papercomputeco/sweeper/pkg/loop"
 	"github.com/papercomputeco/sweeper/pkg/provider"
+	"github.com/papercomputeco/sweeper/pkg/telemetry"
 	"github.com/papercomputeco/sweeper/pkg/worker"
 )
 
@@ -941,5 +942,44 @@ func TestNewAgentEmptyProviderDefaultsToClaude(t *testing.T) {
 	if a.providerKind != provider.KindCLI {
 		t.Errorf("expected KindCLI for empty provider, got %d", a.providerKind)
 	}
+}
+
+func TestWithPublisherOption(t *testing.T) {
+	fakePub := &fakePublisher{}
+	cfg := config.Config{
+		TargetDir:    t.TempDir(),
+		Concurrency:  1,
+		TelemetryDir: t.TempDir(),
+		NoTapes:      true,
+	}
+	fakeLinter := func(ctx context.Context, dir string) (linter.ParseResult, error) {
+		return linter.ParseResult{}, nil
+	}
+	a := New(cfg, WithLinterFunc(fakeLinter), WithPublisher(fakePub))
+	_, err := a.Run(context.Background())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fakePub.publishCount == 0 {
+		t.Error("expected WithPublisher to override default publisher and receive Publish calls")
+	}
+	if !fakePub.closed {
+		t.Error("expected Close() to be called on publisher")
+	}
+}
+
+type fakePublisher struct {
+	publishCount int
+	closed       bool
+}
+
+func (f *fakePublisher) Publish(_ context.Context, _ telemetry.Event) error {
+	f.publishCount++
+	return nil
+}
+
+func (f *fakePublisher) Close() error {
+	f.closed = true
+	return nil
 }
 
