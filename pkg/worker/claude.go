@@ -3,15 +3,12 @@ package worker
 import (
 	"context"
 	"os/exec"
-	"strings"
 	"time"
 )
 
-// NewClaudeExecutor returns an Executor that invokes claude with the given
-// allowed tools. This lets callers configure which tools sub-agents can use
-// without reverting to --dangerously-skip-permissions.
-func NewClaudeExecutor(allowedTools []string) Executor {
-	toolsArg := strings.Join(allowedTools, ",")
+// NewClaudeExecutor returns an Executor that invokes claude with
+// --dangerously-skip-permissions for non-interactive sub-agent use.
+func NewClaudeExecutor() Executor {
 	return func(ctx context.Context, task Task) Result {
 		start := time.Now()
 		prompt := task.Prompt
@@ -20,7 +17,7 @@ func NewClaudeExecutor(allowedTools []string) Executor {
 		}
 		cmd := exec.CommandContext(ctx, "claude",
 			"--print",
-			"--allowedTools", toolsArg,
+			"--dangerously-skip-permissions",
 			prompt,
 		)
 		cmd.Dir = task.Dir
