@@ -3,9 +3,9 @@ package config
 import "time"
 
 type Config struct {
-	TargetDir   string
-	Concurrency int
-	RateLimit   time.Duration // minimum delay between agent dispatches
+	TargetDir      string
+	Concurrency    int
+	RateLimit      time.Duration // minimum delay between agent dispatches
 	TelemetryDir   string
 	DryRun         bool
 	NoTapes        bool
@@ -30,7 +30,7 @@ func Default() Config {
 		TargetDir:      ".",
 		Concurrency:    2,
 		RateLimit:      2 * time.Second,
-		TelemetryDir: ".sweeper/telemetry",
+		TelemetryDir:   ".sweeper/telemetry",
 		DryRun:         false,
 		MaxRounds:      1,
 		StaleThreshold: 2,

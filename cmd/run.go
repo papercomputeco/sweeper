@@ -47,10 +47,10 @@ Examples:
 				fmt.Printf("Concurrency clamped to %d (max %d)\n", clamped, config.MaxConcurrency)
 			}
 			cfg := config.Config{
-				TargetDir:    targetDir,
-				Concurrency:  clamped,
-				RateLimit:    rateLimit,
-				TelemetryDir: ".sweeper/telemetry",
+				TargetDir:      targetDir,
+				Concurrency:    clamped,
+				RateLimit:      rateLimit,
+				TelemetryDir:   ".sweeper/telemetry",
 				DryRun:         dryRun,
 				NoTapes:        noTapes,
 				MaxRounds:      maxRounds,
