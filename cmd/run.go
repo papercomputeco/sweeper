@@ -22,7 +22,6 @@ func newRunCmd() *cobra.Command {
 	var dryRun bool
 	var maxRounds int
 	var staleThreshold int
-	var allowedTools []string
 	var useVM bool
 	var vmName string
 	var vmJcard string
@@ -47,16 +46,11 @@ Examples:
 			if clamped != concurrency {
 				fmt.Printf("Concurrency clamped to %d (max %d)\n", clamped, config.MaxConcurrency)
 			}
-			tools := append([]string{}, config.DefaultAllowedTools...)
-			if len(allowedTools) > 0 {
-				tools = append(tools, allowedTools...)
-			}
 			cfg := config.Config{
-				TargetDir:      targetDir,
-				Concurrency:    clamped,
-				RateLimit:      rateLimit,
-				AllowedTools:   tools,
-				TelemetryDir:   ".sweeper/telemetry",
+				TargetDir:    targetDir,
+				Concurrency:  clamped,
+				RateLimit:    rateLimit,
+				TelemetryDir: ".sweeper/telemetry",
 				DryRun:         dryRun,
 				NoTapes:        noTapes,
 				MaxRounds:      maxRounds,
@@ -156,7 +150,6 @@ Examples:
 			return nil
 		},
 	}
-	cmd.Flags().StringSliceVar(&allowedTools, "allowed-tools", nil, "additional tools for sub-agents (e.g. 'Bash(npm:*),Bash(cargo:*)')")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be fixed without making changes")
 	cmd.Flags().IntVar(&maxRounds, "max-rounds", 1, "maximum retry rounds (1 = single pass)")
 	cmd.Flags().IntVar(&staleThreshold, "stale-threshold", 2, "consecutive non-improving rounds before exploration mode")

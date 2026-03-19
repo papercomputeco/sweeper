@@ -2,21 +2,10 @@ package config
 
 import "time"
 
-// DefaultAllowedTools is the baseline set of tools sweeper agents can use.
-// Users can extend this via --allowed-tools without reverting to a blanket bypass.
-var DefaultAllowedTools = []string{
-	"Read",
-	"Write",
-	"Edit",
-	"Glob",
-	"Grep",
-}
-
 type Config struct {
-	TargetDir      string
-	Concurrency    int
-	RateLimit      time.Duration // minimum delay between agent dispatches
-	AllowedTools   []string      // tools sub-agents are permitted to use
+	TargetDir   string
+	Concurrency int
+	RateLimit   time.Duration // minimum delay between agent dispatches
 	TelemetryDir   string
 	DryRun         bool
 	NoTapes        bool
@@ -41,8 +30,7 @@ func Default() Config {
 		TargetDir:      ".",
 		Concurrency:    2,
 		RateLimit:      2 * time.Second,
-		AllowedTools:   append([]string{}, DefaultAllowedTools...),
-		TelemetryDir:   ".sweeper/telemetry",
+		TelemetryDir: ".sweeper/telemetry",
 		DryRun:         false,
 		MaxRounds:      1,
 		StaleThreshold: 2,

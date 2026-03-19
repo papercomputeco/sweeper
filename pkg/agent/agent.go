@@ -77,14 +77,13 @@ func New(cfg config.Config, opts ...Option) *Agent {
 	if p, err := provider.Get(provName); err == nil {
 		a.providerKind = p.Kind
 		a.executor = p.NewExec(provider.Config{
-			Model:        cfg.ProviderModel,
-			APIBase:      cfg.ProviderAPI,
-			AllowedTools: cfg.AllowedTools,
+			Model:   cfg.ProviderModel,
+			APIBase: cfg.ProviderAPI,
 		})
 	} else {
 		fmt.Printf("Warning: unknown provider %q, falling back to claude\n", provName)
 		a.providerKind = provider.KindCLI
-		a.executor = worker.NewClaudeExecutor(cfg.AllowedTools)
+		a.executor = worker.NewClaudeExecutor()
 	}
 
 	for _, opt := range opts {

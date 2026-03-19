@@ -13,10 +13,9 @@ const (
 
 // Config holds provider-specific settings passed when constructing an executor.
 type Config struct {
-	Model        string   // model name (e.g. "qwen2.5-coder:7b")
-	APIBase      string   // base URL for API providers (e.g. "http://localhost:11434")
-	AllowedTools []string // tools for CLI harnesses
-	ExtraArgs    []string // additional CLI arguments
+	Model     string   // model name (e.g. "qwen2.5-coder:7b")
+	APIBase   string   // base URL for API providers (e.g. "http://localhost:11434")
+	ExtraArgs []string // additional CLI arguments
 }
 
 // Provider describes a registered AI backend.

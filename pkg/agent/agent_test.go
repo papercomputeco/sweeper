@@ -903,7 +903,7 @@ func TestNewAgentFallbackOnUnknownProvider(t *testing.T) {
 		Concurrency:  1,
 		TelemetryDir: t.TempDir(),
 		Provider:     "nonexistent-provider-xyz",
-		AllowedTools: []string{"Read"},
+
 	}
 	a := New(cfg)
 	// Should fall back to KindCLI and Claude executor without panicking
@@ -921,7 +921,7 @@ func TestNewAgentWithProviderFromRegistry(t *testing.T) {
 		Concurrency:  1,
 		TelemetryDir: t.TempDir(),
 		Provider:     "claude",
-		AllowedTools: []string{"Read"},
+
 	}
 	a := New(cfg)
 	if a.providerKind != provider.KindCLI {
@@ -935,7 +935,7 @@ func TestNewAgentEmptyProviderDefaultsToClaude(t *testing.T) {
 		Concurrency:  1,
 		TelemetryDir: t.TempDir(),
 		Provider:     "",
-		AllowedTools: []string{"Read"},
+
 	}
 	a := New(cfg)
 	if a.providerKind != provider.KindCLI {
