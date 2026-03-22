@@ -208,6 +208,31 @@ Every sub-agent session is recorded in [tapes](https://github.com/papercomputeco
 
 Run `sweeper observe` after each sweep to see insights and tune your next run.
 
+## Confluent Cloud Telemetry
+
+Sweeper can stream telemetry events to Confluent Cloud alongside local JSONL files. Enable it in `.sweeper/config.toml`:
+
+```toml
+[telemetry]
+backend = "confluent"
+dir = ".sweeper/telemetry"
+
+[telemetry.confluent]
+brokers = ["pkc-xxxxx.region.provider.confluent.cloud:9092"]
+topic = "sweeper.telemetry"
+client_id = "sweeper"
+api_key_env = "SWEEPER_CONFLUENT_API_KEY"
+api_secret_env = "SWEEPER_CONFLUENT_API_SECRET"
+```
+
+Set `SWEEPER_CONFLUENT_API_KEY` and `SWEEPER_CONFLUENT_API_SECRET` in your environment. The config references env var names, not raw credentials.
+
+For cluster and topic setup, install the [confluent-cloud-setup](https://github.com/papercomputeco/skills/tree/main/skills/confluent-cloud-setup) skill:
+
+```bash
+npx skills add papercomputeco/skills
+```
+
 ## VM Isolation
 
 Sub-agents can run inside ephemeral [stereOS](https://stereos.ai) virtual machines, managed by the `mb` (Masterblaster) CLI. This is what makes high concurrency safe.
