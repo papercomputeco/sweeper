@@ -51,7 +51,7 @@ func TestClaudeExecutorUsesTaskPrompt(t *testing.T) {
 	dir := t.TempDir()
 	fakeClaude := filepath.Join(dir, "claude")
 	// Script echoes the prompt argument (last arg) so we can verify it
-	// Args: --print --allowedTools <tools> <prompt>
+	// Args: --print --dangerously-skip-permissions <prompt>
 	if err := os.WriteFile(fakeClaude, []byte("#!/bin/sh\necho \"$@\""), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -67,7 +67,7 @@ func TestClaudeExecutorUsesTaskPrompt(t *testing.T) {
 		},
 		Prompt: customPrompt,
 	}
-	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
+	result := NewClaudeExecutor()(context.Background(), task)
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
@@ -93,7 +93,7 @@ func TestClaudeExecutorFallsBackToBuildPrompt(t *testing.T) {
 		},
 		// Prompt intentionally left empty
 	}
-	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
+	result := NewClaudeExecutor()(context.Background(), task)
 	if !result.Success {
 		t.Fatalf("expected success, got error: %s", result.Error)
 	}
@@ -119,7 +119,7 @@ func TestClaudeExecutorSuccess(t *testing.T) {
 			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
 		},
 	}
-	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
+	result := NewClaudeExecutor()(context.Background(), task)
 	if !result.Success {
 		t.Errorf("expected success, got error: %s", result.Error)
 	}
@@ -147,7 +147,7 @@ func TestClaudeExecutorError(t *testing.T) {
 			{File: "test.go", Line: 1, Message: "unused var", Linter: "revive"},
 		},
 	}
-	result := NewClaudeExecutor([]string{"Read", "Edit"})(context.Background(), task)
+	result := NewClaudeExecutor()(context.Background(), task)
 	if result.Success {
 		t.Error("expected failure")
 	}

@@ -31,7 +31,7 @@ type ProviderConfig struct {
 	Name         string   `toml:"name"`
 	Model        string   `toml:"model"`
 	APIBase      string   `toml:"api_base"`
-	AllowedTools []string `toml:"allowed_tools"`
+
 }
 
 type TelemetryConfig struct {
@@ -65,8 +65,7 @@ func NewDefaultTOMLConfig() TOMLConfig {
 			StaleThreshold: 2,
 		},
 		Provider: ProviderConfig{
-			Name:         "claude",
-			AllowedTools: append([]string{}, DefaultAllowedTools...),
+			Name: "claude",
 		},
 		Telemetry: TelemetryConfig{
 			Backend: "jsonl",

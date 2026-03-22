@@ -132,14 +132,6 @@ func TestFromTOMLInvalidRateLimit(t *testing.T) {
 	}
 }
 
-func TestFromTOMLEmptyToolsUsesDefaults(t *testing.T) {
-	tc := NewDefaultTOMLConfig()
-	tc.Provider.AllowedTools = []string{}
-	cfg := FromTOML(tc)
-	if len(cfg.AllowedTools) != len(DefaultAllowedTools) {
-		t.Errorf("expected %d default tools, got %d", len(DefaultAllowedTools), len(cfg.AllowedTools))
-	}
-}
 
 func TestFromTOMLVMFields(t *testing.T) {
 	tc := NewDefaultTOMLConfig()
@@ -222,9 +214,6 @@ func TestApplyEnvOverridesAllFields(t *testing.T) {
 	}
 	if tc.Provider.APIBase != "https://api.openai.com" {
 		t.Errorf("expected api_base, got %s", tc.Provider.APIBase)
-	}
-	if len(tc.Provider.AllowedTools) != 2 {
-		t.Errorf("expected 2 allowed tools, got %d", len(tc.Provider.AllowedTools))
 	}
 	if tc.Telemetry.Backend != "confluent" {
 		t.Errorf("expected backend confluent, got %s", tc.Telemetry.Backend)

@@ -231,7 +231,7 @@ Sweeper dispatches automated Claude sub-agents. To stay within [Anthropic's usag
 
 - **Rate limiting**: agents are dispatched with a configurable delay between each (default 2s, `--rate-limit`)
 - **Concurrency cap**: hard maximum of 5 parallel agents regardless of flags
-- **Scoped permissions**: sub-agents use `--allowedTools` with a narrow whitelist (Read, Write, Edit, Glob, Grep, limited Bash) instead of `--dangerously-skip-permissions`
+- **Skip permissions**: sub-agents use `--dangerously-skip-permissions` for non-interactive automated operation
 - **Backoff**: exponential delay between retry rounds (5s, 10s, 20s, ... capped at 60s)
 - **Agent identification**: all prompts identify the sub-agent as an automated tool with human oversight
 

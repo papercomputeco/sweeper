@@ -24,7 +24,6 @@ func newRunCmd() *cobra.Command {
 	var dryRun bool
 	var maxRounds int
 	var staleThreshold int
-	var allowedTools []string
 	var useVM bool
 	var vmName string
 	var vmJcard string
@@ -92,9 +91,7 @@ Examples:
 				cfg.Concurrency = clamped
 			}
 
-			if len(allowedTools) > 0 {
-				cfg.AllowedTools = append(cfg.AllowedTools, allowedTools...)
-			}
+
 
 			// Build telemetry publisher from config.
 			pub := buildPublisher(tc)
@@ -191,7 +188,6 @@ Examples:
 			return nil
 		},
 	}
-	cmd.Flags().StringSliceVar(&allowedTools, "allowed-tools", nil, "additional tools for sub-agents (e.g. 'Bash(npm:*),Bash(cargo:*)')")
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "show what would be fixed without making changes")
 	cmd.Flags().IntVar(&maxRounds, "max-rounds", 1, "maximum retry rounds (1 = single pass)")
 	cmd.Flags().IntVar(&staleThreshold, "stale-threshold", 2, "consecutive non-improving rounds before exploration mode")
