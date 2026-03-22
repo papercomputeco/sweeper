@@ -3,6 +3,7 @@ package cmd
 import (
 	"fmt"
 
+	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/observer"
 	"github.com/papercomputeco/sweeper/pkg/tapes"
 	"github.com/spf13/cobra"
@@ -13,6 +14,12 @@ func newObserveCmd() *cobra.Command {
 		Use:   "observe",
 		Short: "Analyze past runs and show learned patterns",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			tc, err := config.LoadTOML(".", configPath)
+			if err != nil {
+				tc = config.NewDefaultTOMLConfig()
+			}
+			telDir := tc.Telemetry.Dir
+
 			var opts []observer.ObserverOption
 
 			if !noTapes {
@@ -26,7 +33,7 @@ func newObserveCmd() *cobra.Command {
 				}
 			}
 
-			obs := observer.New(".sweeper/telemetry", opts...)
+			obs := observer.New(telDir, opts...)
 			insights, err := obs.Analyze()
 			if err != nil {
 				return err

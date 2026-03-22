@@ -13,6 +13,8 @@ import (
 	"github.com/papercomputeco/sweeper/pkg/config"
 	"github.com/papercomputeco/sweeper/pkg/linter"
 	"github.com/papercomputeco/sweeper/pkg/provider"
+	"github.com/papercomputeco/sweeper/pkg/telemetry"
+	"github.com/papercomputeco/sweeper/pkg/telemetry/confluent"
 	"github.com/papercomputeco/sweeper/pkg/vm"
 	"github.com/papercomputeco/sweeper/pkg/worker"
 	"github.com/spf13/cobra"
@@ -42,23 +44,57 @@ Examples:
 			ctx, cancel := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 			defer cancel()
 
-			clamped := config.ClampConcurrency(concurrency)
-			if clamped != concurrency {
+			// Load TOML config (defaults -> home -> project -> env).
+			tc, err := config.LoadTOML(targetDir, configPath)
+			if err != nil {
+				fmt.Printf("Warning: loading config: %v\n", err)
+				tc = config.NewDefaultTOMLConfig()
+			}
+
+			// CLI flags override TOML config.
+			rootPF := cmd.Root().PersistentFlags()
+			if rootPF.Changed("concurrency") {
+				tc.Run.Concurrency = concurrency
+			}
+			if rootPF.Changed("rate-limit") {
+				tc.Run.RateLimit = rateLimit.String()
+			}
+			if rootPF.Changed("no-tapes") {
+				tc.Run.NoTapes = noTapes
+			}
+			if cmd.Flags().Changed("max-rounds") {
+				tc.Run.MaxRounds = maxRounds
+			}
+			if cmd.Flags().Changed("stale-threshold") {
+				tc.Run.StaleThreshold = staleThreshold
+			}
+			if cmd.Flags().Changed("dry-run") {
+				tc.Run.DryRun = dryRun
+			}
+			if cmd.Flags().Changed("provider") {
+				tc.Provider.Name = providerName
+			}
+			if cmd.Flags().Changed("model") {
+				tc.Provider.Model = providerModel
+			}
+			if cmd.Flags().Changed("api-base") {
+				tc.Provider.APIBase = providerAPI
+			}
+
+			// Build runtime config from TOML.
+			cfg := config.FromTOML(tc)
+			cfg.TargetDir = targetDir
+
+			clamped := config.ClampConcurrency(cfg.Concurrency)
+			if clamped != cfg.Concurrency {
 				fmt.Printf("Concurrency clamped to %d (max %d)\n", clamped, config.MaxConcurrency)
+				cfg.Concurrency = clamped
 			}
-			cfg := config.Config{
-				TargetDir:      targetDir,
-				Concurrency:    clamped,
-				RateLimit:      rateLimit,
-				TelemetryDir:   ".sweeper/telemetry",
-				DryRun:         dryRun,
-				NoTapes:        noTapes,
-				MaxRounds:      maxRounds,
-				StaleThreshold: staleThreshold,
-				Provider:       providerName,
-				ProviderModel:  providerModel,
-				ProviderAPI:    providerAPI,
-			}
+
+
+
+			// Build telemetry publisher from config.
+			pub := buildPublisher(tc)
 
 			// Validate provider exists before proceeding.
 			if _, err := provider.Get(cfg.Provider); err != nil {
@@ -137,6 +173,8 @@ Examples:
 				}
 			}
 
+			opts = append(opts, agent.WithPublisher(pub))
+
 			a := agent.New(cfg, opts...)
 			summary, err := a.Run(ctx)
 			if err != nil {
@@ -176,4 +214,32 @@ func argsAfterDash(cmd *cobra.Command, args []string) []string {
 		return nil
 	}
 	return args[idx:]
+}
+
+func buildPublisher(tc config.TOMLConfig) telemetry.Publisher {
+	jsonl := telemetry.NewJSONLPublisher(tc.Telemetry.Dir)
+
+	if tc.Telemetry.Backend != "confluent" {
+		return jsonl
+	}
+
+	cc := tc.Telemetry.Confluent
+	if len(cc.Brokers) == 0 || cc.Topic == "" {
+		fmt.Println("Warning: confluent backend selected but brokers/topic not configured, using JSONL only")
+		return jsonl
+	}
+
+	cp, err := confluent.NewPublisher(confluent.Config{
+		Brokers:      cc.Brokers,
+		Topic:        cc.Topic,
+		ClientID:     cc.ClientID,
+		APIKeyEnv:    cc.APIKeyEnv,
+		APISecretEnv: cc.APISecretEnv,
+	})
+	if err != nil {
+		fmt.Printf("Warning: confluent publisher: %v, using JSONL only\n", err)
+		return jsonl
+	}
+
+	return telemetry.NewMultiPublisher(jsonl, cp)
 }

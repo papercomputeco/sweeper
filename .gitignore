@@ -4,6 +4,7 @@ sweeper.md
 .claude/
 *.jsonl
 coverage.out
+api-key-*.txt
 
 # Sweeper ephemeral VM jcards (contain secrets)
 .sweeper/vm/
