@@ -176,12 +176,39 @@ sweeper run --provider ollama --model qwen2.5-coder:7b
 sweeper run --provider ollama --model codellama --api-base http://gpu-server:11434
 ```
 
+### Refactors
+
+Sweeper fixes anything you can express as `file:line: message` output. Pipe the output of any detection command and agents will work on each file in parallel.
+
+```bash
+# Refactor files over 1000 lines
+find . -name '*.go' -exec wc -l {} + \
+  | awk '$1 > 1000 {print $2":1: file exceeds 1000 lines"}' \
+  | sweeper run
+
+# Resolve TODO comments across the codebase
+grep -rn 'TODO\|FIXME\|HACK' --include='*.go' . | sweeper run
+
+# Find and fix functions exceeding cyclomatic complexity
+gocyclo -over 15 ./... | sweeper run
+
+# Split oversized React components
+find src -name '*.tsx' -exec wc -l {} + \
+  | awk '$1 > 500 {print $2":1: component exceeds 500 lines"}' \
+  | sweeper run
+
+# Fix failing tests by feeding test output to agents
+go test ./... 2>&1 | sweeper run
+```
+
 When using sweeper as a skill, you can pass arbitrary goals to the agent:
 
 - "Run sweeper on this project" — default lint-fix loop
 - "Run sweeper to clean up AI slop — remove verbose comments, unnecessary null checks, filler docstrings, and over-abstractions"
 - "Run sweeper to fix all failing tests"
 - "Run sweeper to migrate deprecated API calls"
+- "Run sweeper to refactor files over 1000 lines"
+- "Run sweeper to resolve all TODOs"
 
 The agent will pick the right command and flags based on your goal.
 
